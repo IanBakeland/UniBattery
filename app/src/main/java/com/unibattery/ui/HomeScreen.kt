@@ -30,18 +30,29 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridItemScope
+import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -64,6 +75,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
@@ -79,8 +91,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -119,30 +134,32 @@ fun HomeScreen() {
 
   val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
   val pullState = rememberPullToRefreshState()
+  // Landscape phones have little height: the large collapsing bar would eat half the screen.
+  val compactHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() } < CompactHeight
 
   Scaffold(
     modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
     containerColor = MaterialTheme.colorScheme.surfaceContainer,
     topBar = {
-      LargeFlexibleTopAppBar(
-        title = { Text(stringResource(R.string.title)) },
-        subtitle = {
-          AnimatedContent(subtitle(state), label = "subtitle") { Text(it) }
-        },
-        actions = {
-          IconButton(onClick = { repo.refresh() }, enabled = state.status == BtStatus.On && !state.refreshing) {
-            Icon(painterResource(R.drawable.ic_refresh), stringResource(R.string.refresh))
-          }
-          IconButton(onClick = { showSettings = true }) {
-            Icon(painterResource(R.drawable.ic_settings), stringResource(R.string.settings))
-          }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-          containerColor = MaterialTheme.colorScheme.surfaceContainer,
-          scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-        ),
-        scrollBehavior = scroll,
+      val title = @Composable { Text(stringResource(R.string.title)) }
+      val subtitle = @Composable { AnimatedContent(subtitle(state), label = "subtitle") { Text(it) } }
+      val actions: @Composable RowScope.() -> Unit = {
+        IconButton(onClick = { repo.refresh() }, enabled = state.status == BtStatus.On && !state.refreshing) {
+          Icon(painterResource(R.drawable.ic_refresh), stringResource(R.string.refresh))
+        }
+        IconButton(onClick = { showSettings = true }) {
+          Icon(painterResource(R.drawable.ic_settings), stringResource(R.string.settings))
+        }
+      }
+      val colors = TopAppBarDefaults.topAppBarColors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
       )
+      if (compactHeight) {
+        TopAppBar(title = title, subtitle = subtitle, actions = actions, colors = colors, scrollBehavior = scroll)
+      } else {
+        LargeFlexibleTopAppBar(title = title, subtitle = subtitle, actions = actions, colors = colors, scrollBehavior = scroll)
+      }
     },
   ) { padding ->
     PullToRefreshBox(
@@ -158,57 +175,88 @@ fun HomeScreen() {
         )
       },
     ) {
-      LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-      ) {
-        when (state.status) {
-          BtStatus.NoAdapter -> item("message") {
-            Message(R.drawable.ic_bluetooth_off, R.string.no_adapter_title, R.string.no_adapter_body)
+      BoxWithConstraints(Modifier.fillMaxSize()) {
+        val compactWidth = maxWidth < MediumWidth
+        val gutter = if (compactWidth) 16.dp else 24.dp
+        val spacing = if (compactWidth) 12.dp else 16.dp
+        // Content is centred at a readable width; the side margins stay part of the scrollable area.
+        val side = (maxWidth - minOf(maxWidth - gutter * 2, MaxContentWidth)) / 2
+        val roomy = !compactWidth && !compactHeight
+        val connected = state.connected
+        // Expanded windows (unfolded Fold, tablets, landscape phones) pin the overview in its own pane.
+        val overviewPane = maxWidth >= ExpandedWidth && state.status == BtStatus.On && connected.isNotEmpty()
+        val gridWidth = maxWidth - side * 2 - if (overviewPane) OverviewPaneWidth + spacing else 0.dp
+        val columns = ((gridWidth + spacing) / (MinCardWidth + spacing)).toInt().coerceIn(1, 3)
+
+        Row(Modifier.fillMaxSize().padding(start = if (overviewPane) side else 0.dp)) {
+          if (overviewPane) {
+            Column(
+              Modifier.width(OverviewPaneWidth).fillMaxHeight().verticalScroll(rememberScrollState())
+                .padding(top = 8.dp, bottom = 32.dp),
+            ) { Overview(connected, large = !compactHeight, vertical = true) }
+            Spacer(Modifier.width(spacing))
           }
-          BtStatus.NoPermission -> item("message") {
-            Message(R.drawable.ic_bluetooth, R.string.permission_title, R.string.permission_body) {
-              if (permissionBlocked) {
-                OutlinedButton(onClick = {
-                  context.startActivity(
-                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
-                  )
-                }) { Text(stringResource(R.string.permission_settings_button)) }
-              } else {
-                Button(onClick = { requestConnect.launch(Manifest.permission.BLUETOOTH_CONNECT) }) {
-                  Text(stringResource(R.string.permission_button))
+          LazyVerticalGrid(
+            columns = GridCells.Fixed(columns),
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            contentPadding = PaddingValues(start = if (overviewPane) 0.dp else side, end = side, top = 8.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(spacing),
+            horizontalArrangement = Arrangement.spacedBy(spacing),
+          ) {
+            when (state.status) {
+              BtStatus.NoAdapter -> fullItem("message") {
+                Message(R.drawable.ic_bluetooth_off, R.string.no_adapter_title, R.string.no_adapter_body)
+              }
+              BtStatus.NoPermission -> fullItem("message") {
+                Message(R.drawable.ic_bluetooth, R.string.permission_title, R.string.permission_body) {
+                  if (permissionBlocked) {
+                    OutlinedButton(onClick = {
+                      context.startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                      )
+                    }) { Text(stringResource(R.string.permission_settings_button)) }
+                  } else {
+                    Button(onClick = { requestConnect.launch(Manifest.permission.BLUETOOTH_CONNECT) }) {
+                      Text(stringResource(R.string.permission_button))
+                    }
+                  }
                 }
               }
-            }
-          }
-          BtStatus.Off -> item("message") {
-            Message(R.drawable.ic_bluetooth_off, R.string.off_title, R.string.off_body) {
-              Button(onClick = {
-                runCatching { enableBluetooth.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)) }
-              }) { Text(stringResource(R.string.off_button)) }
-            }
-          }
-          BtStatus.On -> {
-            val connected = state.connected
-            if (connected.isEmpty()) {
-              item("message") { Message(R.drawable.ic_bluetooth, R.string.empty_title, R.string.empty_body, spin = true) }
-            } else {
-              item("overview") { Overview(connected, Modifier.animateItem()) }
-              item("connected-header") { SectionHeader(stringResource(R.string.section_connected), Modifier.animateItem()) }
-              connected.forEach { device ->
-                item(device.address) { DeviceCard(device, Modifier.animateItem()) }
+              BtStatus.Off -> fullItem("message") {
+                Message(R.drawable.ic_bluetooth_off, R.string.off_title, R.string.off_body) {
+                  Button(onClick = {
+                    runCatching { enableBluetooth.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)) }
+                  }) { Text(stringResource(R.string.off_button)) }
+                }
               }
-            }
-            val paired = state.paired
-            if (paired.isNotEmpty()) {
-              item("paired-header") {
-                PairedHeader(paired.size, pairedExpanded, Modifier.animateItem()) { pairedExpanded = !pairedExpanded }
-              }
-              if (pairedExpanded) {
-                item("paired-list") {
-                  Column(Modifier.animateItem(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    paired.forEachIndexed { i, d -> PairedRow(d, i, paired.size) }
+              BtStatus.On -> {
+                if (connected.isEmpty()) {
+                  fullItem("message") { Message(R.drawable.ic_bluetooth, R.string.empty_title, R.string.empty_body, spin = true) }
+                } else {
+                  if (!overviewPane) fullItem("overview") { Overview(connected, large = roomy, modifier = Modifier.animateItem()) }
+                  fullItem("connected-header") { SectionHeader(stringResource(R.string.section_connected), Modifier.animateItem()) }
+                  connected.forEach { device ->
+                    item(device.address) { DeviceCard(device, Modifier.animateItem()) }
+                  }
+                }
+                val paired = state.paired
+                if (paired.isNotEmpty()) {
+                  fullItem("paired-header") {
+                    PairedHeader(paired.size, pairedExpanded, Modifier.animateItem()) { pairedExpanded = !pairedExpanded }
+                  }
+                  if (pairedExpanded) {
+                    if (columns == 1) {
+                      fullItem("paired-list") {
+                        Column(Modifier.animateItem(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                          paired.forEachIndexed { i, d -> PairedRow(d, groupedShape(i, paired.size)) }
+                        }
+                      }
+                    } else {
+                      // A grouped list can't span grid cells, so each paired device becomes its own tile.
+                      paired.forEach { d ->
+                        item("paired-" + d.address) { PairedRow(d, RoundedCornerShape(24.dp), Modifier.animateItem()) }
+                      }
+                    }
                   }
                 }
               }
@@ -231,6 +279,18 @@ private fun subtitle(state: BatteryState): String = when (state.status) {
   BtStatus.NoPermission -> stringResource(R.string.permission_title)
   BtStatus.NoAdapter -> stringResource(R.string.no_adapter_title)
 }
+
+// Material 3 window breakpoints.
+private val MediumWidth = 600.dp
+private val ExpandedWidth = 840.dp
+private val CompactHeight = 480.dp
+private val MaxContentWidth = 1200.dp
+private val OverviewPaneWidth = 320.dp
+// Narrowest a device card gets before the grid drops a column (name + big percentage must fit).
+private val MinCardWidth = 320.dp
+
+private fun LazyGridScope.fullItem(key: String, content: @Composable LazyGridItemScope.() -> Unit) =
+  item(key, span = { GridItemSpan(maxLineSpan) }, content = content)
 
 /** Battery colour roles: error when critical, tertiary when getting low, primary otherwise. */
 @Composable
@@ -259,8 +319,12 @@ private fun animatedProgress(level: Int): Float {
   return p.coerceIn(0f, 1f)
 }
 
+/**
+ * [large] grows the ring and shows more mini rings when there's room; [vertical] stacks the ring above the
+ * summary for the narrow side pane on expanded windows.
+ */
 @Composable
-private fun Overview(devices: List<BtDevice>, modifier: Modifier = Modifier) {
+private fun Overview(devices: List<BtDevice>, modifier: Modifier = Modifier, large: Boolean = false, vertical: Boolean = false) {
   val reporting = devices.filter { it.battery != null }
   val lowest = reporting.minByOrNull { it.battery!! }
   val (container, onContainer) = levelColors(lowest?.battery)
@@ -278,45 +342,66 @@ private fun Overview(devices: List<BtDevice>, modifier: Modifier = Modifier) {
       return@Card
     }
     val level = lowest.battery!!
-    Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
-      Box(contentAlignment = Alignment.Center, modifier = Modifier.size(132.dp)) {
+    val ringSize = if (large) 160.dp else 132.dp
+    val ring = @Composable {
+      Box(contentAlignment = Alignment.Center, modifier = Modifier.size(ringSize)) {
         val progress = animatedProgress(level)
         CircularWavyProgressIndicator(
           progress = { progress },
-          modifier = Modifier.size(132.dp),
+          modifier = Modifier.size(ringSize),
           color = onContainer,
           trackColor = onContainer.copy(alpha = 0.12f),
         )
         Text(
           stringResource(R.string.percent, level),
-          style = MaterialTheme.typography.headlineLargeEmphasized,
+          style = if (large) MaterialTheme.typography.displaySmallEmphasized else MaterialTheme.typography.headlineLargeEmphasized,
         )
       }
-      Spacer(Modifier.width(20.dp))
-      Column(Modifier.weight(1f)) {
-        Text(
-          if (level > 30) stringResource(R.string.overview_all_good) else stringResource(R.string.overview_lowest, lowest.name, level),
-          style = MaterialTheme.typography.titleLargeEmphasized,
-        )
-        Spacer(Modifier.height(12.dp))
-        // One mini ring per reporting device: a glanceable "everything" view next to the lowest one.
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          reporting.take(4).forEach { d ->
-            val p = animatedProgress(d.battery!!)
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.semantics {
-              contentDescription = "${d.name} ${d.battery}%"
-            }) {
-              CircularWavyProgressIndicator(
-                progress = { p },
-                modifier = Modifier.size(40.dp),
-                color = onContainer,
-                trackColor = onContainer.copy(alpha = 0.12f),
-                amplitude = { 0f },
-              )
-              Icon(painterResource(d.kind.icon), null, Modifier.size(18.dp))
-            }
+    }
+    val summary = @Composable {
+      Text(
+        if (level > 30) stringResource(R.string.overview_all_good) else stringResource(R.string.overview_lowest, lowest.name, level),
+        style = if (large) MaterialTheme.typography.headlineSmallEmphasized else MaterialTheme.typography.titleLargeEmphasized,
+        textAlign = if (vertical) TextAlign.Center else TextAlign.Start,
+      )
+      Spacer(Modifier.height(12.dp))
+      // One mini ring per reporting device: a glanceable "everything" view next to the lowest one.
+      FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp, if (vertical) Alignment.CenterHorizontally else Alignment.Start),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        reporting.take(if (large) 8 else 4).forEach { d ->
+          val p = animatedProgress(d.battery!!)
+          Box(contentAlignment = Alignment.Center, modifier = Modifier.semantics {
+            contentDescription = "${d.name} ${d.battery}%"
+          }) {
+            CircularWavyProgressIndicator(
+              progress = { p },
+              modifier = Modifier.size(40.dp),
+              color = onContainer,
+              trackColor = onContainer.copy(alpha = 0.12f),
+              amplitude = { 0f },
+            )
+            Icon(painterResource(d.kind.icon), null, Modifier.size(18.dp))
           }
         }
+      }
+    }
+    if (vertical) {
+      Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        ring()
+        Spacer(Modifier.height(20.dp))
+        summary()
+      }
+    } else {
+      // Centred as a group so a wide card doesn't leave an empty right half.
+      Row(
+        Modifier.fillMaxWidth().padding(if (large) 28.dp else 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (large) 40.dp else 20.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        ring()
+        Column(Modifier.weight(1f, fill = !large)) { summary() }
       }
     }
   }
@@ -440,12 +525,17 @@ private fun PairedHeader(count: Int, expanded: Boolean, modifier: Modifier = Mod
 }
 
 /** Expressive grouped list: large outer corners, tight inner corners. */
-@Composable
-private fun PairedRow(device: BtDevice, index: Int, count: Int) {
+private fun groupedShape(index: Int, count: Int): Shape {
   val top = if (index == 0) 24.dp else 6.dp
   val bottom = if (index == count - 1) 24.dp else 6.dp
+  return RoundedCornerShape(top, top, bottom, bottom)
+}
+
+@Composable
+private fun PairedRow(device: BtDevice, shape: Shape, modifier: Modifier = Modifier) {
   Surface(
-    shape = RoundedCornerShape(top, top, bottom, bottom),
+    modifier = modifier,
+    shape = shape,
     color = MaterialTheme.colorScheme.surfaceBright,
   ) {
     ListItem(
@@ -489,6 +579,7 @@ private fun Message(icon: Int, title: Int, body: Int, spin: Boolean = false, act
       style = MaterialTheme.typography.bodyLarge,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
       textAlign = TextAlign.Center,
+      modifier = Modifier.widthIn(max = 480.dp),
     )
     if (action != null) {
       Spacer(Modifier.height(24.dp))
