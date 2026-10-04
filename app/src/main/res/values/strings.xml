@@ -17,6 +17,10 @@
   <string name="overview_none">None of your connected devices report battery levels.</string>
   <string name="overview_all_good">All devices above 30%%</string>
   <string name="section_connected">Connected</string>
+  <string name="overview_average">Average %d%%</string>
+  <string name="overview_highest">Highest %d%%</string>
+  <string name="action_bluetooth_settings">Bluetooth settings</string>
+  <string name="action_notification">Notification</string>
   <string name="section_paired">Paired devices · %d</string>
 
   <string name="empty_title">No devices connected</string>

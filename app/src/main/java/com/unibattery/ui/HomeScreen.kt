@@ -105,6 +105,21 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.TonalToggleButton
+import androidx.graphics.shapes.RoundedPolygon
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.IntOffset
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.unibattery.R
 import com.unibattery.bluetooth.BatteryState
@@ -132,8 +147,54 @@ fun HomeScreen() {
   }
   val enableBluetooth = rememberLauncherForActivityResult(StartActivityForResult()) { repo.refresh(manual = false) }
 
+  // Persistent notification: shared by the quick action and the settings sheet.
+  val haptics = LocalHapticFeedback.current
+  var notifyOn by rememberSaveable { mutableStateOf(BatteryNotificationService.isEnabled(context)) }
+  fun applyNotify(on: Boolean) {
+    haptics.performHapticFeedback(if (on) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff)
+    notifyOn = on
+    BatteryNotificationService.setEnabled(context, on)
+  }
+  val requestNotifications = rememberLauncherForActivityResult(RequestPermission()) { granted -> if (granted) applyNotify(true) }
+  val setNotify = { on: Boolean ->
+    val needsPermission = on && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+      ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+    if (needsPermission) requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) else applyNotify(on)
+  }
+
   val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
   val pullState = rememberPullToRefreshState()
+  // Goes through View.performHapticFeedback, so the system "touch feedback" setting is respected.
+  val tap = { haptics.performHapticFeedback(HapticFeedbackType.ContextClick) }
+
+  // Confirm when a device connects, a softer tick when one drops. Skipped on first load so opening
+  // the app doesn't buzz for devices that were already connected.
+  val connectedAddresses = state.connected.mapTo(HashSet()) { it.address }
+  val previousAddresses = remember { mutableStateOf<Set<String>?>(null) }
+  LaunchedEffect(connectedAddresses) {
+    previousAddresses.value?.let { prev ->
+      when {
+        (connectedAddresses - prev).isNotEmpty() -> haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+        (prev - connectedAddresses).isNotEmpty() -> haptics.performHapticFeedback(HapticFeedbackType.ToggleOff)
+      }
+    }
+    previousAddresses.value = connectedAddresses
+  }
+
+  // Pull-to-refresh: one tick when the pull crosses the release threshold (not when a button refresh
+  // animates the indicator in).
+  LaunchedEffect(pullState) {
+    snapshotFlow { pullState.distanceFraction >= 1f && !pullState.isAnimating }
+      .distinctUntilChanged()
+      .collect { if (it) haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate) }
+  }
+
+  // The refresh icon makes one full turn per refresh, however it was started.
+  val refreshTurn = remember { Animatable(0f) }
+  val turnSpec = MaterialTheme.motionScheme.slowSpatialSpec<Float>()
+  LaunchedEffect(state.refreshing) {
+    if (state.refreshing) refreshTurn.animateTo(refreshTurn.targetValue + 360f, turnSpec)
+  }
   // Landscape phones have little height: the large collapsing bar would eat half the screen.
   val compactHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() } < CompactHeight
 
@@ -144,10 +205,13 @@ fun HomeScreen() {
       val title = @Composable { Text(stringResource(R.string.title)) }
       val subtitle = @Composable { AnimatedContent(subtitle(state), label = "subtitle") { Text(it) } }
       val actions: @Composable RowScope.() -> Unit = {
-        IconButton(onClick = { repo.refresh() }, enabled = state.status == BtStatus.On && !state.refreshing) {
-          Icon(painterResource(R.drawable.ic_refresh), stringResource(R.string.refresh))
+        IconButton(onClick = { tap(); repo.refresh() }, enabled = state.status == BtStatus.On && !state.refreshing) {
+          Icon(
+            painterResource(R.drawable.ic_refresh), stringResource(R.string.refresh),
+            Modifier.graphicsLayer { rotationZ = refreshTurn.value },
+          )
         }
-        IconButton(onClick = { showSettings = true }) {
+        IconButton(onClick = { tap(); showSettings = true }) {
           Icon(painterResource(R.drawable.ic_settings), stringResource(R.string.settings))
         }
       }
@@ -188,16 +252,38 @@ fun HomeScreen() {
         val gridWidth = maxWidth - side * 2 - if (overviewPane) OverviewPaneWidth + spacing else 0.dp
         val columns = ((gridWidth + spacing) / (MinCardWidth + spacing)).toInt().coerceIn(1, 3)
 
+        // Widget tiers. Lowest battery first, so whatever needs charging gets the most space: the first
+        // few become medium widgets, the rest compact tiles, and silent devices (no battery report) wide strips.
+        val reporting = connected.filter { it.battery != null }.sortedBy { it.battery }
+        val silent = connected.filter { it.battery == null }
+        val featuredCount = maxOf(2, columns).let { if (reporting.size == it + 1) it + 1 else it } // no lone tile
+        val featured = reporting.take(featuredCount)
+        val compact = reporting.drop(featuredCount)
+        val mediumSpan = Lanes / columns
+        val tilesPerRow = listOf(6, 4, 3, 2).first { it <= TilesPerRow[columns - 1] && it <= maxOf(2, compact.size) }
+        val quickActions = @Composable {
+          QuickActions(
+            notifyOn = notifyOn,
+            onNotifyChange = setNotify,
+            onBluetoothSettings = { tap(); runCatching { context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) } },
+            center = overviewPane,
+          )
+        }
+
         Row(Modifier.fillMaxSize().padding(start = if (overviewPane) side else 0.dp)) {
           if (overviewPane) {
             Column(
               Modifier.width(OverviewPaneWidth).fillMaxHeight().verticalScroll(rememberScrollState())
                 .padding(top = 8.dp, bottom = 32.dp),
-            ) { Overview(connected, large = !compactHeight, vertical = true) }
+            ) {
+              Overview(connected, large = !compactHeight, vertical = true)
+              Spacer(Modifier.height(spacing))
+              quickActions()
+            }
             Spacer(Modifier.width(spacing))
           }
           LazyVerticalGrid(
-            columns = GridCells.Fixed(columns),
+            columns = GridCells.Fixed(Lanes),
             modifier = Modifier.weight(1f).fillMaxHeight(),
             contentPadding = PaddingValues(start = if (overviewPane) 0.dp else side, end = side, top = 8.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(spacing),
@@ -205,56 +291,61 @@ fun HomeScreen() {
           ) {
             when (state.status) {
               BtStatus.NoAdapter -> fullItem("message") {
-                Message(R.drawable.ic_bluetooth_off, R.string.no_adapter_title, R.string.no_adapter_body)
+                Message(R.drawable.ic_bluetooth_off, R.string.no_adapter_title, R.string.no_adapter_body, MaterialShapes.PuffyDiamond)
               }
               BtStatus.NoPermission -> fullItem("message") {
-                Message(R.drawable.ic_bluetooth, R.string.permission_title, R.string.permission_body) {
+                Message(R.drawable.ic_bluetooth, R.string.permission_title, R.string.permission_body, MaterialShapes.Clover4Leaf) {
                   if (permissionBlocked) {
                     OutlinedButton(onClick = {
+                      tap()
                       context.startActivity(
                         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                       )
                     }) { Text(stringResource(R.string.permission_settings_button)) }
                   } else {
-                    Button(onClick = { requestConnect.launch(Manifest.permission.BLUETOOTH_CONNECT) }) {
+                    Button(onClick = { tap(); requestConnect.launch(Manifest.permission.BLUETOOTH_CONNECT) }) {
                       Text(stringResource(R.string.permission_button))
                     }
                   }
                 }
               }
               BtStatus.Off -> fullItem("message") {
-                Message(R.drawable.ic_bluetooth_off, R.string.off_title, R.string.off_body) {
+                Message(R.drawable.ic_bluetooth_off, R.string.off_title, R.string.off_body, MaterialShapes.SoftBurst) {
                   Button(onClick = {
+                    tap()
                     runCatching { enableBluetooth.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)) }
                   }) { Text(stringResource(R.string.off_button)) }
                 }
               }
               BtStatus.On -> {
                 if (connected.isEmpty()) {
-                  fullItem("message") { Message(R.drawable.ic_bluetooth, R.string.empty_title, R.string.empty_body, spin = true) }
+                  fullItem("message") { Message(R.drawable.ic_bluetooth, R.string.empty_title, R.string.empty_body, MaterialShapes.Cookie12Sided, spin = true) }
                 } else {
-                  if (!overviewPane) fullItem("overview") { Overview(connected, large = roomy, modifier = Modifier.animateItem()) }
-                  fullItem("connected-header") { SectionHeader(stringResource(R.string.section_connected), Modifier.animateItem()) }
-                  connected.forEach { device ->
-                    item(device.address) { DeviceCard(device, Modifier.animateItem()) }
-                  }
+                  if (!overviewPane) fullItem("overview") { Overview(connected, large = roomy, modifier = itemMotion()) }
+                  fullItem("connected-header") { SectionHeader(stringResource(R.string.section_connected), itemMotion()) }
+                  // Same key across tiers, so a device whose level changes its rank glides to its new spot.
+                  featured.forEach { d -> item(d.address, span = { GridItemSpan(mediumSpan) }) { DeviceCard(d, itemMotion()) } }
+                  compact.forEach { d -> item(d.address, span = { GridItemSpan(Lanes / tilesPerRow) }) { DeviceTile(d, itemMotion()) } }
+                  silent.forEach { d -> fullItem(d.address) { DeviceStrip(d, itemMotion()) } }
+                  if (!overviewPane) fullItem("actions") { Box(itemMotion().padding(top = 8.dp)) { quickActions() } }
                 }
                 val paired = state.paired
                 if (paired.isNotEmpty()) {
                   fullItem("paired-header") {
-                    PairedHeader(paired.size, pairedExpanded, Modifier.animateItem()) { pairedExpanded = !pairedExpanded }
+                    PairedHeader(paired.size, pairedExpanded, itemMotion()) { tap(); pairedExpanded = !pairedExpanded }
                   }
                   if (pairedExpanded) {
                     if (columns == 1) {
                       fullItem("paired-list") {
-                        Column(Modifier.animateItem(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Column(itemMotion(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                           paired.forEachIndexed { i, d -> PairedRow(d, groupedShape(i, paired.size)) }
                         }
                       }
                     } else {
-                      // A grouped list can't span grid cells, so each paired device becomes its own tile.
+                      // A grouped list can't span grid cells, so each paired device becomes its own tile. Same key
+                      // as its connected card, so a device that disconnects glides into this section.
                       paired.forEach { d ->
-                        item("paired-" + d.address) { PairedRow(d, RoundedCornerShape(24.dp), Modifier.animateItem()) }
+                        item(d.address, span = { GridItemSpan(mediumSpan) }) { PairedRow(d, RoundedCornerShape(24.dp), itemMotion()) }
                       }
                     }
                   }
@@ -267,7 +358,9 @@ fun HomeScreen() {
     }
   }
 
-  if (showSettings) SettingsSheet(state.status, onDismiss = { showSettings = false })
+  if (showSettings) {
+    SettingsSheet(state.status, notifyOn, onNotifyChange = setNotify, onDismiss = { showSettings = false })
+  }
 }
 
 @Composable
@@ -288,6 +381,18 @@ private val MaxContentWidth = 1200.dp
 private val OverviewPaneWidth = 320.dp
 // Narrowest a device card gets before the grid drops a column (name + big percentage must fit).
 private val MinCardWidth = 320.dp
+// 12 lanes divide evenly into 1-3 medium widgets and 2/3/4/6 compact tiles per row.
+private const val Lanes = 12
+// Most compact tiles per row for 1, 2 and 3 medium columns.
+private val TilesPerRow = listOf(3, 4, 6)
+
+/** List enter/exit/reorder motion, taken from the Material 3 Expressive motion scheme. */
+@Composable
+private fun LazyGridItemScope.itemMotion(): Modifier = Modifier.animateItem(
+  fadeInSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+  placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+  fadeOutSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+)
 
 private fun LazyGridScope.fullItem(key: String, content: @Composable LazyGridItemScope.() -> Unit) =
   item(key, span = { GridItemSpan(maxLineSpan) }, content = content)
@@ -313,10 +418,54 @@ private fun levelAccent(level: Int?): Color = with(MaterialTheme.colorScheme) {
   }
 }
 
+/**
+ * Starts empty so an indicator fills in when a device appears. Returned as a lambda so the per-frame
+ * value is only read while drawing, not on every recomposition.
+ */
 @Composable
-private fun animatedProgress(level: Int): Float {
-  val p by animateFloatAsState(level / 100f, MaterialTheme.motionScheme.slowSpatialSpec(), label = "battery")
-  return p.coerceIn(0f, 1f)
+private fun animatedProgress(level: Int): () -> Float {
+  val p = remember { Animatable(0f) }
+  val spec = MaterialTheme.motionScheme.slowSpatialSpec<Float>()
+  LaunchedEffect(level) { p.animateTo(level / 100f, spec) }
+  return remember(p) { { p.value.coerceIn(0f, 1f) } }
+}
+
+/**
+ * One small scale bump when [trigger] turns true after first composition: a low-battery warning or a
+ * "full" moment, never looped.
+ */
+@Composable
+private fun Modifier.nudge(trigger: Boolean): Modifier {
+  val scale = remember { Animatable(1f) }
+  val first = remember { booleanArrayOf(true) }
+  val spec = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
+  LaunchedEffect(trigger) {
+    if (trigger && !first[0]) {
+      scale.animateTo(1.12f, spec)
+      scale.animateTo(1f, spec)
+    }
+    first[0] = false
+  }
+  return graphicsLayer { scaleX = scale.value; scaleY = scale.value }
+}
+
+/** Percentage that rolls up or down instead of swapping in place (72% → 73%). */
+@Composable
+private fun AnimatedPercent(level: Int?, style: TextStyle, color: Color, modifier: Modifier = Modifier) {
+  val spatial = MaterialTheme.motionScheme.fastSpatialSpec<IntOffset>()
+  val effects = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+  AnimatedContent(
+    targetState = level,
+    modifier = modifier,
+    transitionSpec = {
+      val up = (targetState ?: 0) > (initialState ?: 0)
+      (slideInVertically(spatial) { if (up) it else -it } + fadeIn(effects)) togetherWith
+        (slideOutVertically(spatial) { if (up) -it else it } + fadeOut(effects))
+    },
+    label = "percent",
+  ) { l ->
+    Text(if (l != null) stringResource(R.string.percent, l) else "—", style = style, color = color)
+  }
 }
 
 /**
@@ -345,16 +494,16 @@ private fun Overview(devices: List<BtDevice>, modifier: Modifier = Modifier, lar
     val ringSize = if (large) 160.dp else 132.dp
     val ring = @Composable {
       Box(contentAlignment = Alignment.Center, modifier = Modifier.size(ringSize)) {
-        val progress = animatedProgress(level)
         CircularWavyProgressIndicator(
-          progress = { progress },
-          modifier = Modifier.size(ringSize),
+          progress = animatedProgress(level),
+          modifier = Modifier.size(ringSize).nudge(level <= 15),
           color = onContainer,
           trackColor = onContainer.copy(alpha = 0.12f),
         )
-        Text(
-          stringResource(R.string.percent, level),
+        AnimatedPercent(
+          level,
           style = if (large) MaterialTheme.typography.displaySmallEmphasized else MaterialTheme.typography.headlineLargeEmphasized,
+          color = onContainer,
         )
       }
     }
@@ -364,26 +513,14 @@ private fun Overview(devices: List<BtDevice>, modifier: Modifier = Modifier, lar
         style = if (large) MaterialTheme.typography.headlineSmallEmphasized else MaterialTheme.typography.titleLargeEmphasized,
         textAlign = if (vertical) TextAlign.Center else TextAlign.Start,
       )
-      Spacer(Modifier.height(12.dp))
-      // One mini ring per reporting device: a glanceable "everything" view next to the lowest one.
-      FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp, if (vertical) Alignment.CenterHorizontally else Alignment.Start),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-      ) {
-        reporting.take(if (large) 8 else 4).forEach { d ->
-          val p = animatedProgress(d.battery!!)
-          Box(contentAlignment = Alignment.Center, modifier = Modifier.semantics {
-            contentDescription = "${d.name} ${d.battery}%"
-          }) {
-            CircularWavyProgressIndicator(
-              progress = { p },
-              modifier = Modifier.size(40.dp),
-              color = onContainer,
-              trackColor = onContainer.copy(alpha = 0.12f),
-              amplitude = { 0f },
-            )
-            Icon(painterResource(d.kind.icon), null, Modifier.size(18.dp))
-          }
+      if (reporting.size > 1) {
+        Spacer(Modifier.height(16.dp))
+        FlowRow(
+          horizontalArrangement = Arrangement.spacedBy(8.dp, if (vertical) Alignment.CenterHorizontally else Alignment.Start),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          StatPill(stringResource(R.string.overview_average, reporting.sumOf { it.battery!! } / reporting.size), onContainer)
+          StatPill(stringResource(R.string.overview_highest, reporting.maxOf { it.battery!! }), onContainer)
         }
       }
     }
@@ -404,6 +541,14 @@ private fun Overview(devices: List<BtDevice>, modifier: Modifier = Modifier, lar
         Column(Modifier.weight(1f, fill = !large)) { summary() }
       }
     }
+  }
+}
+
+/** Small pill-shaped statistic inside the overview. */
+@Composable
+private fun StatPill(text: String, onContainer: Color) {
+  Surface(shape = CircleShape, color = onContainer.copy(alpha = 0.1f), contentColor = onContainer) {
+    Text(text, style = MaterialTheme.typography.labelLargeEmphasized, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
   }
 }
 
@@ -428,9 +573,11 @@ private fun DeviceIcon(device: BtDevice, size: Int = 56) {
   }
 }
 
+/** Medium widget: a device that needs attention, with a big percentage and a wavy level bar. */
 @Composable
 private fun DeviceCard(device: BtDevice, modifier: Modifier = Modifier) {
-  val level = device.battery
+  val level = device.battery ?: return
+  val accent by animateColorAsState(levelAccent(level), MaterialTheme.motionScheme.defaultEffectsSpec(), label = "accent")
   Card(
     modifier = modifier.fillMaxWidth(),
     shape = RoundedCornerShape(28.dp),
@@ -458,50 +605,99 @@ private fun DeviceCard(device: BtDevice, modifier: Modifier = Modifier) {
             )
           }
         }
-        AnimatedContent(
-          targetState = level,
-          transitionSpec = {
-            val up = (targetState ?: 0) > (initialState ?: 0)
-            (slideInVertically { if (up) it else -it } + fadeIn()) togetherWith
-              (slideOutVertically { if (up) -it else it } + fadeOut())
-          },
-          label = "level",
-        ) { l ->
+        AnimatedPercent(
+          level,
+          style = MaterialTheme.typography.displaySmallEmphasized,
+          color = accent,
+          modifier = Modifier.nudge(level <= 15 || level == 100),
+        )
+      }
+      Spacer(Modifier.height(16.dp))
+      LinearWavyProgressIndicator(
+        progress = animatedProgress(level),
+        modifier = Modifier.fillMaxWidth().height(14.dp),
+        color = accent,
+        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+      )
+    }
+  }
+}
+
+/** Small widget: ring with the device icon inside, percentage and name. For the "everything else" devices. */
+@Composable
+private fun DeviceTile(device: BtDevice, modifier: Modifier = Modifier) {
+  val level = device.battery ?: return
+  val accent by animateColorAsState(levelAccent(level), MaterialTheme.motionScheme.defaultEffectsSpec(), label = "accent")
+  Surface(
+    modifier = modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
+    shape = RoundedCornerShape(28.dp),
+    color = MaterialTheme.colorScheme.surfaceBright,
+  ) {
+    Column(Modifier.padding(vertical = 16.dp, horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+      Box(contentAlignment = Alignment.Center, modifier = Modifier.nudge(level <= 15 || level == 100)) {
+        CircularWavyProgressIndicator(
+          progress = animatedProgress(level),
+          modifier = Modifier.size(64.dp),
+          color = accent,
+          trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        )
+        Icon(painterResource(device.kind.icon), null, Modifier.size(24.dp), tint = accent)
+      }
+      Spacer(Modifier.height(10.dp))
+      AnimatedPercent(level, style = MaterialTheme.typography.titleLargeEmphasized, color = accent)
+      Text(
+        device.name,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
+    }
+  }
+}
+
+/** Wide widget: connection status for a device that doesn't report battery, so it doesn't need a whole card. */
+@Composable
+private fun DeviceStrip(device: BtDevice, modifier: Modifier = Modifier) {
+  Surface(modifier = modifier.fillMaxWidth(), shape = CircleShape, color = MaterialTheme.colorScheme.surfaceBright) {
+    Row(Modifier.padding(start = 10.dp, end = 24.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+      DeviceIcon(device, size = 44)
+      Spacer(Modifier.width(14.dp))
+      Column(Modifier.weight(1f)) {
+        Text(device.name, style = MaterialTheme.typography.titleSmallEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF2E9E5B)))
+          Spacer(Modifier.width(6.dp))
           Text(
-            if (l != null) stringResource(R.string.percent, l) else "—",
-            style = MaterialTheme.typography.displaySmallEmphasized,
-            color = if (l != null) levelAccent(l) else MaterialTheme.colorScheme.outline,
+            stringResource(R.string.connected) + " · " + stringResource(R.string.battery_unavailable),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
           )
         }
       }
-      Spacer(Modifier.height(16.dp))
-      if (level != null) {
-        val progress = animatedProgress(level)
-        LinearWavyProgressIndicator(
-          progress = { progress },
-          modifier = Modifier.fillMaxWidth().height(14.dp),
-          color = levelAccent(level),
-          trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-        )
-      } else {
-        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-          Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-              painterResource(R.drawable.ic_info), null,
-              tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(12.dp))
-            Column {
-              Text(stringResource(R.string.battery_unavailable), style = MaterialTheme.typography.labelLarge)
-              Text(
-                stringResource(R.string.battery_unavailable_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-              )
-            }
-          }
-        }
-      }
+    }
+  }
+}
+
+/** Pill quick actions; the notification toggle morphs shape when switched (expressive ToggleButton). */
+@Composable
+private fun QuickActions(notifyOn: Boolean, onNotifyChange: (Boolean) -> Unit, onBluetoothSettings: () -> Unit, center: Boolean) {
+  FlowRow(
+    Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.spacedBy(8.dp, if (center) Alignment.CenterHorizontally else Alignment.Start),
+    verticalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    FilledTonalButton(onClick = onBluetoothSettings, shapes = ButtonDefaults.shapes()) {
+      Icon(painterResource(R.drawable.ic_bluetooth), null, Modifier.size(ButtonDefaults.IconSize))
+      Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+      Text(stringResource(R.string.action_bluetooth_settings))
+    }
+    TonalToggleButton(checked = notifyOn, onCheckedChange = onNotifyChange) {
+      Icon(painterResource(R.drawable.ic_notification), null, Modifier.size(ButtonDefaults.IconSize))
+      Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+      Text(stringResource(R.string.action_notification))
     }
   }
 }
@@ -548,7 +744,14 @@ private fun PairedRow(device: BtDevice, shape: Shape, modifier: Modifier = Modif
 }
 
 @Composable
-private fun Message(icon: Int, title: Int, body: Int, spin: Boolean = false, action: (@Composable () -> Unit)? = null) {
+private fun Message(
+  icon: Int,
+  title: Int,
+  body: Int,
+  shape: RoundedPolygon,
+  spin: Boolean = false,
+  action: (@Composable () -> Unit)? = null,
+) {
   val rotation = if (spin) {
     val t = rememberInfiniteTransition(label = "spin")
     t.animateFloat(0f, 360f, infiniteRepeatable(tween(24_000, easing = LinearEasing), RepeatMode.Restart), label = "r").value
@@ -559,7 +762,7 @@ private fun Message(icon: Int, title: Int, body: Int, spin: Boolean = false, act
   ) {
     Box(contentAlignment = Alignment.Center, modifier = Modifier.size(168.dp)) {
       Box(
-        Modifier.fillMaxSize().rotate(rotation).clip(MaterialShapes.Cookie12Sided.toShape())
+        Modifier.fillMaxSize().rotate(rotation).clip(shape.toShape())
           .background(MaterialTheme.colorScheme.primaryContainer)
       )
       Icon(
@@ -589,15 +792,7 @@ private fun Message(icon: Int, title: Int, body: Int, spin: Boolean = false, act
 }
 
 @Composable
-private fun SettingsSheet(status: BtStatus, onDismiss: () -> Unit) {
-  val context = LocalContext.current
-  var enabled by rememberSaveable { mutableStateOf(BatteryNotificationService.isEnabled(context)) }
-  fun set(on: Boolean) {
-    enabled = on
-    BatteryNotificationService.setEnabled(context, on)
-  }
-  val requestNotifications = rememberLauncherForActivityResult(RequestPermission()) { granted -> if (granted) set(true) }
-
+private fun SettingsSheet(status: BtStatus, notifyOn: Boolean, onNotifyChange: (Boolean) -> Unit, onDismiss: () -> Unit) {
   ModalBottomSheet(onDismissRequest = onDismiss) {
     Column(Modifier.padding(horizontal = 16.dp).navigationBarsPadding().padding(bottom = 16.dp)) {
       Text(
@@ -611,14 +806,9 @@ private fun SettingsSheet(status: BtStatus, onDismiss: () -> Unit) {
           supportingContent = { Text(stringResource(R.string.settings_notification_body)) },
           trailingContent = {
             Switch(
-              checked = enabled,
+              checked = notifyOn,
               enabled = status != BtStatus.NoPermission && status != BtStatus.NoAdapter,
-              onCheckedChange = { on ->
-                val needsPermission = on && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                  ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-                  PackageManager.PERMISSION_GRANTED
-                if (needsPermission) requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) else set(on)
-              },
+              onCheckedChange = onNotifyChange,
             )
           },
           colors = ListItemDefaults.colors(containerColor = Color.Transparent),
