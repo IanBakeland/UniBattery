@@ -29,7 +29,7 @@ Headphones, mouse, keyboard, controller, watch: every one of them seems to want 
 There's no Play Store release. Build it yourself with Android Studio, or from the command line:
 
 ```bash
-git clone https://github.com/<your-username>/UniBattery.git
+git clone https://github.com/IanBakeland/UniBattery.git
 cd UniBattery
 ./gradlew :app:installDebug      # build and install on a connected phone
 ./gradlew :app:testDebugUnitTest # run unit tests
