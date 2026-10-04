@@ -23,7 +23,7 @@ Headphones, mouse, keyboard, controller, watch: every one of them seems to want 
 
 - 🏠 **Home-screen widget**: all connected devices and their battery levels at a glance
 - 📱 **Dashboard app**: Material 3 Expressive UI with an icon per device type
-- 🕘 **Last known battery**: when a device isn't connected, see the level it had last time, so you know whether to charge it before you connect
+- 🕘 **Last known battery**: when a device isn't connected, the app and the widgets show the level it had last time, so you know whether to charge it before you connect
 - 🔔 **Optional notification**: a silent, persistent notification that keeps the levels current
 - 🔒 **Minimal permissions**: no location, no scanning, only access to devices you have already paired
 

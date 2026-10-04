@@ -106,11 +106,11 @@ class DeviceWidgetReceiver : GlanceAppWidgetReceiver() {
 private fun DeviceContent(state: BatteryState, address: String?) {
   val size = LocalSize.current
   val device = if (address == null) {
-    state.connected.filter { it.battery != null }.minByOrNull { it.battery!! } ?: state.connected.firstOrNull()
+    shownDevices(state).firstOrNull()
   } else {
     state.devices.find { it.address == address }
   }
-  // A chosen device that's merely disconnected still shows (greyed); otherwise explain what's wrong.
+  // A chosen device that's merely disconnected still shows, with its last known level; otherwise explain what's wrong.
   val message = if (device == null || state.status != BtStatus.On) statusMessage(state) ?: R.string.no_devices_connected else null
   WidgetSurface {
     when {
@@ -128,13 +128,13 @@ private fun DeviceContent(state: BatteryState, address: String?) {
   }
 }
 
-private val BtDevice.level get() = if (connected) battery else null
+private val BtDevice.level get() = shownLevel
 
 @Composable
 private fun statusLine(d: BtDevice): String {
   val context = LocalContext.current
   return when {
-    !d.connected -> context.getString(R.string.not_connected)
+    !d.connected -> lastSeenText(d)
     d.battery == null -> context.getString(R.string.battery_unavailable)
     else -> context.getString(R.string.connected)
   }
@@ -143,7 +143,7 @@ private fun statusLine(d: BtDevice): String {
 /** 1x1: just the ring with the device icon inside. */
 @Composable
 private fun RingOnly(d: BtDevice, ring: Dp) {
-  Ring(d.level, ring, ring / 11) { DeviceGlyph(d, ring * 0.42f, accentFor(d.level)) }
+  Ring(d.level, ring, ring / 11, wavy = d.connected) { DeviceGlyph(d, ring * 0.42f, glyphTint(d)) }
 }
 
 /** Square and roomy (e.g. a One UI 2x2): a ring that fills the widget, name and status underneath. */
@@ -156,9 +156,9 @@ private fun Hero(d: BtDevice, size: DpSize) {
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    Ring(d.level, ring, ring / 16) {
+    Ring(d.level, ring, ring / 16, wavy = d.connected) {
       Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        DeviceGlyph(d, ring * 0.2f, accentFor(d.level))
+        DeviceGlyph(d, ring * 0.2f, glyphTint(d))
         GlanceText(percentText(d.level), style = textStyle((ring.value * 0.2f).sp, GlanceTheme.colors.onSurface, bold = true))
       }
     }
@@ -189,7 +189,7 @@ private fun Focus(d: BtDevice) {
     GlanceSpacer(GlanceModifier.glanceHeight(6.dp))
     val level = d.level
     if (level != null) LevelBar(level)
-    else GlanceText(statusLine(d), maxLines = 1, style = textStyle(11.sp, GlanceTheme.colors.onSurfaceVariant))
+    if (level == null || !d.connected) GlanceText(statusLine(d), maxLines = 1, style = textStyle(11.sp, GlanceTheme.colors.onSurfaceVariant))
   }
 }
 
@@ -197,7 +197,7 @@ private fun Focus(d: BtDevice) {
 @Composable
 private fun Strip(d: BtDevice) {
   Row(GlanceModifier.glanceFillMaxSize().glancePadding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-    Ring(d.level, 42.dp, 4.dp) { DeviceGlyph(d, 18.dp, accentFor(d.level)) }
+    Ring(d.level, 42.dp, 4.dp, wavy = d.connected) { DeviceGlyph(d, 18.dp, glyphTint(d)) }
     GlanceSpacer(GlanceModifier.width(10.dp))
     Column(GlanceModifier.defaultWeight()) {
       GlanceText(d.name, maxLines = 1, style = textStyle(14.sp, GlanceTheme.colors.onSurface, bold = true))
@@ -212,7 +212,7 @@ private fun Strip(d: BtDevice) {
 private fun Detail(d: BtDevice, size: DpSize) {
   val ring = minOf(size.height - 24.dp, size.width * 0.42f).coerceIn(72.dp, 160.dp)
   Row(GlanceModifier.glanceFillMaxSize().glancePadding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-    Ring(d.level, ring, ring / 11) {
+    Ring(d.level, ring, ring / 11, wavy = d.connected) {
       GlanceText(percentText(d.level), style = textStyle((ring.value * 0.24f).sp, GlanceTheme.colors.onSurface, bold = true))
     }
     GlanceSpacer(GlanceModifier.width(14.dp))

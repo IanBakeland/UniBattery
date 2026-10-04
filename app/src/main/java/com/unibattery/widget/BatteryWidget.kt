@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.text.format.DateUtils
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
@@ -111,8 +112,7 @@ suspend fun updateWidgets(context: Context) {
 @Composable
 private fun Dashboard(state: BatteryState) {
   val size = LocalSize.current
-  // Same priority as the app: lowest battery first, devices that don't report battery last.
-  val devices = state.connected.sortedWith(compareBy(nullsLast()) { it.battery })
+  val devices = shownDevices(state)
   val message = statusMessage(state)
   WidgetSurface {
     when {
@@ -135,7 +135,7 @@ private fun Chips(devices: List<BtDevice>) {
       Row(GlanceModifier.defaultWeight(), verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {
         CookieIcon(d, 32.dp)
         Spacer(GlanceModifier.width(6.dp))
-        Text(percentText(d.battery), style = textStyle(16.sp, accentFor(d.battery), bold = true), maxLines = 1)
+        Text(percentText(d.shownLevel), style = textStyle(16.sp, accentFor(d.shownLevel), bold = true), maxLines = 1)
       }
     }
   }
@@ -148,15 +148,13 @@ private fun OverviewLayout(devices: List<BtDevice>, size: DpSize) {
   val lowest = devices.first()
   Box(GlanceModifier.fillMaxSize().padding(6.dp), contentAlignment = Alignment.TopEnd) { RefreshButton(28.dp) }
   Column(GlanceModifier.fillMaxSize().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalAlignment = Alignment.CenterVertically) {
-    Ring(lowest.battery, ring, ring / 11) {
-      if (lowest.battery != null) Text(percentText(lowest.battery), style = textStyle((ring.value * 0.24f).sp, GlanceTheme.colors.onSurface, bold = true))
-      else DeviceGlyph(lowest, ring * 0.4f, GlanceTheme.colors.onSurfaceVariant)
-    }
+    LowestRing(lowest, ring, ring / 11, (ring.value * 0.24f).sp)
     Spacer(GlanceModifier.height(6.dp))
     Text(
       lowest.name, maxLines = 1,
       style = textStyle(12.sp, GlanceTheme.colors.onSurfaceVariant).copy(textAlign = TextAlign.Center),
     )
+    if (!lowest.connected) Text(lastSeenText(lowest, prefix = false), maxLines = 1, style = textStyle(10.sp, GlanceTheme.colors.outline).copy(textAlign = TextAlign.Center))
   }
 }
 
@@ -164,14 +162,17 @@ private fun OverviewLayout(devices: List<BtDevice>, size: DpSize) {
 @Composable
 private fun ListLayout(devices: List<BtDevice>) {
   Column(GlanceModifier.fillMaxSize().padding(12.dp)) {
-    Header(LocalContext.current.getString(R.string.title))
+    Header(LocalContext.current.getString(if (devices.first().connected) R.string.title else R.string.section_last_known))
     LazyColumn {
       items(devices, itemId = { it.address.hashCode().toLong() }) { d ->
         Row(GlanceModifier.fillMaxWidth().padding(vertical = 3.dp).clickable(openApp()), verticalAlignment = Alignment.CenterVertically) {
           CookieIcon(d, 28.dp)
           Spacer(GlanceModifier.width(10.dp))
-          Text(d.name, maxLines = 1, style = textStyle(14.sp, GlanceTheme.colors.onSurface), modifier = GlanceModifier.defaultWeight())
-          Text(percentText(d.battery), style = textStyle(16.sp, accentFor(d.battery), bold = true))
+          Column(GlanceModifier.defaultWeight()) {
+            Text(d.name, maxLines = 1, style = textStyle(14.sp, GlanceTheme.colors.onSurface))
+            if (!d.connected) Text(lastSeenText(d), maxLines = 1, style = textStyle(11.sp, GlanceTheme.colors.onSurfaceVariant))
+          }
+          Text(percentText(d.shownLevel), style = textStyle(16.sp, accentFor(d.shownLevel), bold = true))
         }
       }
     }
@@ -183,7 +184,7 @@ private fun ListLayout(devices: List<BtDevice>) {
 private fun DashboardLayout(devices: List<BtDevice>) {
   Column(GlanceModifier.fillMaxSize().padding(12.dp)) {
     Row(GlanceModifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-      LowestRing(devices.first(), 64.dp)
+      LowestRing(devices.first(), 64.dp, 6.dp, 17.sp)
       Spacer(GlanceModifier.width(12.dp))
       Summary(devices, GlanceModifier.defaultWeight())
       RefreshButton()
@@ -201,11 +202,11 @@ private fun DashboardLayout(devices: List<BtDevice>) {
 private fun WideDashboardLayout(devices: List<BtDevice>, columns: Int) {
   Row(GlanceModifier.fillMaxSize().padding(12.dp)) {
     Column(
-      GlanceModifier.width(150.dp).fillMaxHeight().background(primaryContainerFor(devices.first().battery)).cornerRadius(24.dp).padding(12.dp),
+      GlanceModifier.width(150.dp).fillMaxHeight().background(primaryContainerFor(devices.first().shownLevel)).cornerRadius(24.dp).padding(12.dp),
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      LowestRing(devices.first(), 96.dp)
+      LowestRing(devices.first(), 96.dp, 9.dp, 24.sp)
       Spacer(GlanceModifier.height(10.dp))
       Summary(devices, GlanceModifier, center = true)
       Spacer(GlanceModifier.height(10.dp))
@@ -251,17 +252,15 @@ internal fun RefreshButton(size: Dp = 36.dp) {
 }
 
 @Composable
-private fun LowestRing(lowest: BtDevice, size: Dp) {
-  Ring(lowest.battery, size, if (size > 80.dp) 9.dp else 6.dp) {
-    if (lowest.battery != null) {
-      Text(percentText(lowest.battery), style = textStyle(if (size > 80.dp) 24.sp else 17.sp, GlanceTheme.colors.onSurface, bold = true))
-    } else {
-      DeviceGlyph(lowest, size * 0.4f, GlanceTheme.colors.onSurfaceVariant)
-    }
+private fun LowestRing(lowest: BtDevice, size: Dp, stroke: Dp, text: TextUnit) {
+  val level = lowest.shownLevel
+  Ring(level, size, stroke, wavy = lowest.connected) {
+    if (level != null) Text(percentText(level), style = textStyle(text, GlanceTheme.colors.onSurface, bold = true))
+    else DeviceGlyph(lowest, size * 0.4f, GlanceTheme.colors.onSurfaceVariant)
   }
 }
 
-/** Name of the lowest device, next to its ring. */
+/** Name of the lowest device, next to its ring; says so when these are remembered levels. */
 @Composable
 private fun Summary(devices: List<BtDevice>, modifier: GlanceModifier, center: Boolean = false) {
   val align = if (center) TextAlign.Center else TextAlign.Start
@@ -270,6 +269,12 @@ private fun Summary(devices: List<BtDevice>, modifier: GlanceModifier, center: B
       devices.first().name, maxLines = 2,
       style = textStyle(14.sp, GlanceTheme.colors.onSurface, bold = true).copy(textAlign = align),
     )
+    if (!devices.first().connected) {
+      Text(
+        LocalContext.current.getString(R.string.section_last_known), maxLines = 1,
+        style = textStyle(12.sp, GlanceTheme.colors.onSurfaceVariant).copy(textAlign = align),
+      )
+    }
   }
 }
 
@@ -282,12 +287,15 @@ private fun DeviceBarTile(d: BtDevice) {
     Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
       CookieIcon(d, 30.dp)
       Spacer(GlanceModifier.width(10.dp))
-      Text(d.name, maxLines = 1, style = textStyle(14.sp, GlanceTheme.colors.onSecondaryContainer), modifier = GlanceModifier.defaultWeight())
-      Text(percentText(d.battery), style = textStyle(20.sp, accentFor(d.battery), bold = true))
+      Column(GlanceModifier.defaultWeight()) {
+        Text(d.name, maxLines = 1, style = textStyle(14.sp, GlanceTheme.colors.onSecondaryContainer))
+        if (!d.connected) Text(lastSeenText(d), maxLines = 1, style = textStyle(11.sp, GlanceTheme.colors.onSurfaceVariant))
+      }
+      Text(percentText(d.shownLevel), style = textStyle(20.sp, accentFor(d.shownLevel), bold = true))
     }
-    if (d.battery != null) {
+    d.shownLevel?.let {
       Spacer(GlanceModifier.height(7.dp))
-      LevelBar(d.battery)
+      LevelBar(it)
     }
   }
 }
@@ -299,10 +307,11 @@ private fun RingTile(d: BtDevice) {
       .padding(vertical = 10.dp, horizontal = 6.dp).clickable(openApp()),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    Ring(d.battery, 52.dp, 5.dp) { DeviceGlyph(d, 22.dp, accentFor(d.battery)) }
+    Ring(d.shownLevel, 52.dp, 5.dp, wavy = d.connected) { DeviceGlyph(d, 22.dp, glyphTint(d)) }
     Spacer(GlanceModifier.height(4.dp))
-    Text(percentText(d.battery), style = textStyle(16.sp, accentFor(d.battery), bold = true))
+    Text(percentText(d.shownLevel), style = textStyle(16.sp, accentFor(d.shownLevel), bold = true))
     Text(d.name, maxLines = 1, style = textStyle(11.sp, GlanceTheme.colors.onSecondaryContainer).copy(textAlign = TextAlign.Center))
+    if (!d.connected) Text(lastSeenText(d, prefix = false), maxLines = 1, style = textStyle(10.sp, GlanceTheme.colors.onSurfaceVariant).copy(textAlign = TextAlign.Center))
   }
 }
 
@@ -341,8 +350,36 @@ internal fun statusMessage(state: BatteryState): Int? = when (state.status) {
   BtStatus.NoAdapter -> R.string.no_adapter_title
   BtStatus.NoPermission -> R.string.widget_permission
   BtStatus.Off -> R.string.widget_off
-  BtStatus.On -> if (state.connected.isEmpty()) R.string.no_devices_connected else null
+  BtStatus.On -> if (shownDevices(state).isEmpty()) R.string.no_devices_connected else null
 }
+
+/**
+ * Same priority as the app: connected devices, or when none are, the ones with a remembered level.
+ * Lowest battery first, devices that don't report battery last.
+ */
+internal fun shownDevices(state: BatteryState): List<BtDevice> =
+  state.connected.ifEmpty { state.paired.filter { it.lastBattery != null } }.sortedWith(compareBy(nullsLast()) { it.shownLevel })
+
+/**
+ * "Last seen Sat 2:05 PM", or just "Sat 2:05 PM" for small tiles ([prefix] false). A clock time rather than
+ * "2 hours ago", because a widget isn't redrawn every minute and a relative time would quietly go wrong.
+ */
+@Composable
+internal fun lastSeenText(d: BtDevice, prefix: Boolean = true): String {
+  val context = LocalContext.current
+  val seen = d.lastSeen ?: return context.getString(R.string.not_connected)
+  val flags = if (System.currentTimeMillis() - seen < 6 * DateUtils.DAY_IN_MILLIS) {
+    DateUtils.FORMAT_SHOW_WEEKDAY or DateUtils.FORMAT_ABBREV_WEEKDAY or DateUtils.FORMAT_SHOW_TIME
+  } else {
+    DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_ABBREV_MONTH
+  }
+  val time = DateUtils.formatDateTime(context, seen, flags)
+  return if (prefix) context.getString(R.string.last_seen, time) else time
+}
+
+/** Device glyph colour: the level accent when live, grey for a remembered level (like the app's icon). */
+@Composable
+internal fun glyphTint(d: BtDevice): ColorProvider = accentFor(if (d.connected) d.battery else null)
 
 @Composable
 internal fun percentText(level: Int?): String =
@@ -413,7 +450,7 @@ internal fun LevelBar(level: Int) {
  * dynamic colour and light/dark switching working.
  */
 @Composable
-internal fun Ring(level: Int?, size: Dp, stroke: Dp, center: @Composable () -> Unit) {
+internal fun Ring(level: Int?, size: Dp, stroke: Dp, wavy: Boolean = true, center: @Composable () -> Unit) {
   val context = LocalContext.current
   Box(GlanceModifier.size(size), contentAlignment = Alignment.Center) {
     Image(
@@ -422,7 +459,7 @@ internal fun Ring(level: Int?, size: Dp, stroke: Dp, center: @Composable () -> U
     )
     if (level != null && level > 0) {
       Image(
-        ImageProvider(ringBitmap(context, size, stroke, level / 100f)), null, GlanceModifier.size(size),
+        ImageProvider(ringBitmap(context, size, stroke, level / 100f, wavy)), null, GlanceModifier.size(size),
         colorFilter = ColorFilter.tint(accentFor(level)),
       )
     }
@@ -430,7 +467,7 @@ internal fun Ring(level: Int?, size: Dp, stroke: Dp, center: @Composable () -> U
   }
 }
 
-internal fun ringBitmap(context: Context, size: Dp, stroke: Dp, fraction: Float): Bitmap {
+internal fun ringBitmap(context: Context, size: Dp, stroke: Dp, fraction: Float, wavy: Boolean = true): Bitmap {
   val density = context.resources.displayMetrics.density
   val px = (size.value * density).roundToInt().coerceAtLeast(1)
   val strokePx = stroke.value * density
@@ -441,8 +478,9 @@ internal fun ringBitmap(context: Context, size: Dp, stroke: Dp, fraction: Float)
     strokeCap = Paint.Cap.ROUND
     color = android.graphics.Color.WHITE
   }
-  // Flat near empty/full (like the Material wavy indicator) and on small rings, where a few big waves look lumpy.
-  val amplitude = if (fraction in 0.25f..0.95f && size >= 60.dp) strokePx * 0.2f else 0f
+  // Flat near empty/full (like the Material wavy indicator), on small rings, where a few big waves look lumpy,
+  // and for remembered levels (flat = not live, as in the app).
+  val amplitude = if (wavy && fraction in 0.25f..0.95f && size >= 60.dp) strokePx * 0.2f else 0f
   val c = px / 2f
   val radius = c - strokePx / 2 - amplitude
   val waves = (2 * PI * radius / (strokePx * 2.2)).roundToInt().coerceAtLeast(10)

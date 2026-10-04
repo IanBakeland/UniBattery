@@ -53,7 +53,10 @@ data class BtDevice(
   /** Last level read while connected, and when (epoch millis). Kept so a disconnected device still shows it. */
   val lastBattery: Int? = null,
   val lastSeen: Long? = null,
-)
+) {
+  /** Live level when connected, otherwise the last one read. */
+  val shownLevel get() = if (connected) battery else lastBattery
+}
 
 data class BatteryState(
   val status: BtStatus,

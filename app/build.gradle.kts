@@ -11,8 +11,8 @@ android {
     applicationId = "com.unibattery"
     minSdk = 26
     targetSdk = 36
-    versionCode = 4
-    versionName = "1.0.3"
+    versionCode = 5
+    versionName = "1.0.4"
   }
 
   // Release signing credentials live in ~/.gradle/gradle.properties, never in the repo. Without them

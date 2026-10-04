@@ -691,9 +691,6 @@ private fun DeviceTile(device: BtDevice, modifier: Modifier = Modifier, onClick:
   }
 }
 
-/** Live level when connected, otherwise the last one read. */
-private val BtDevice.shownLevel get() = if (connected) battery else lastBattery
-
 private val Connected = Color(0xFF2E9E5B)
 
 /** "Last seen 2 hours ago", or "just now" within the minute. */

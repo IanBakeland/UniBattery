@@ -34,7 +34,8 @@ import kotlin.math.ceil
 
 /**
  * "All devices (compact)": every connected device as a ring in a grid that fits whatever size the widget
- * is, so even a 2x2 shows them all. Wide widgets get a single row; extra devices scroll.
+ * is, so even a 2x2 shows them all. Wide widgets get a single row; extra devices scroll. With nothing
+ * connected it shows the remembered levels, with flat rings and grey icons.
  */
 class GridWidget : GlanceAppWidget() {
   override val sizeMode = SizeMode.Exact
@@ -48,7 +49,7 @@ class GridWidget : GlanceAppWidget() {
           val message = statusMessage(state)
           WidgetSurface {
             if (message != null) MessageLayout(message)
-            else RingGrid(state.connected.sortedWith(compareBy(nullsLast()) { it.battery }))
+            else RingGrid(shownDevices(state))
           }
         }
       }
@@ -91,10 +92,10 @@ private fun GridCell(d: BtDevice, ring: Dp, height: Dp) {
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    Ring(d.battery, ring, (ring / 11).coerceAtLeast(3.dp)) { DeviceGlyph(d, ring * 0.42f, accentFor(d.battery)) }
+    Ring(d.shownLevel, ring, (ring / 11).coerceAtLeast(3.dp), wavy = d.connected) { DeviceGlyph(d, ring * 0.42f, glyphTint(d)) }
     Text(
-      percentText(d.battery), maxLines = 1,
-      style = textStyle(if (ring >= 56.dp) 16.sp else 13.sp, accentFor(d.battery), bold = true).copy(textAlign = TextAlign.Center),
+      percentText(d.shownLevel), maxLines = 1,
+      style = textStyle(if (ring >= 56.dp) 16.sp else 13.sp, accentFor(d.shownLevel), bold = true).copy(textAlign = TextAlign.Center),
     )
   }
 }
