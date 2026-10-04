@@ -9,6 +9,12 @@
 
 Headphones, mouse, keyboard, controller, watch: every one of them seems to want its own companion app just so you can see how much battery is left. Or you dig through Bluetooth settings every time. UniBattery shows them all in one place, so a quick look at your home screen is enough.
 
+<p>
+  <img src="docs/screenshots/dashboard.png" width="250" alt="Dashboard">
+  <img src="docs/screenshots/widgets.png" width="250" alt="Home screen widgets">
+  <img src="docs/screenshots/icon-picker.png" width="250" alt="Icon picker">
+</p>
+
 > [!NOTE]
 > **This app is vibecoded.** It was built almost entirely by prompting an AI (Claude) rather than written by hand. It works for what I need, but don't treat it as production-quality code. Issues and PRs are welcome.
 
