@@ -2,10 +2,9 @@ package com.unibattery
 
 import android.app.Application
 import android.content.Context
-import androidx.glance.appwidget.updateAll
 import com.unibattery.bluetooth.BatteryRepository
 import com.unibattery.notify.BatteryNotificationService
-import com.unibattery.widget.BatteryWidget
+import com.unibattery.widget.updateWidgets
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -22,7 +21,7 @@ class App : Application() {
     repository = BatteryRepository(this, scope)
     scope.launch {
       repository.state.map { it.copy(refreshing = false) }.distinctUntilChanged().drop(1)
-        .collect { BatteryWidget().updateAll(this@App) }
+        .collect { updateWidgets(this@App) }
     }
     BatteryNotificationService.sync(this)
   }

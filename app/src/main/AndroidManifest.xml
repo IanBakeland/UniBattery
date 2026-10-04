@@ -54,5 +54,49 @@
         android:name="android.appwidget.provider"
         android:resource="@xml/battery_widget_info" />
     </receiver>
+
+    <receiver
+      android:name=".widget.DeviceWidgetReceiver"
+      android:exported="true"
+      android:label="@string/widget_device_name">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/device_widget_info" />
+    </receiver>
+
+    <receiver
+      android:name=".widget.GridWidgetReceiver"
+      android:exported="true"
+      android:label="@string/widget_grid_name">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/grid_widget_info" />
+    </receiver>
+
+    <activity
+      android:name=".widget.DeviceWidgetConfigActivity"
+      android:exported="true"
+      android:excludeFromRecents="true"
+      android:taskAffinity="">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+      </intent-filter>
+    </activity>
+
+    <!-- Connect/disconnect are exempt from implicit-broadcast limits, so widgets update even when the app isn't running. -->
+    <receiver
+      android:name=".widget.BluetoothEventReceiver"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+        <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+      </intent-filter>
+    </receiver>
   </application>
 </manifest>

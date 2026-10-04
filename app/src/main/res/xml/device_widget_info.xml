@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- All devices. 4x2 by default; resizes from a 2x1 chip strip up to a tablet-sized dashboard. -->
+<!-- One device. 2x2 by default; resizes from a 1x1 ring to a 4x2 detail card. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-  android:description="@string/widget_description"
+  android:description="@string/widget_device_description"
   android:initialLayout="@layout/glance_default_loading_layout"
-  android:minWidth="250dp"
+  android:configure="com.unibattery.widget.DeviceWidgetConfigActivity"
+  android:widgetFeatures="reconfigurable|configuration_optional"
+  android:minWidth="110dp"
   android:minHeight="110dp"
-  android:minResizeWidth="110dp"
+  android:minResizeWidth="50dp"
   android:minResizeHeight="50dp"
-  android:targetCellWidth="4"
+  android:targetCellWidth="2"
   android:targetCellHeight="2"
   android:resizeMode="horizontal|vertical"
   android:updatePeriodMillis="1800000"

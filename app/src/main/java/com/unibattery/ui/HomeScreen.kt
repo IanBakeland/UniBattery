@@ -563,7 +563,7 @@ private fun SectionHeader(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun DeviceIcon(device: BtDevice, size: Int = 56) {
+internal fun DeviceIcon(device: BtDevice, size: Int = 56) {
   val (container, onContainer) = levelColors(if (device.connected) device.battery else null)
   Box(
     contentAlignment = Alignment.Center,
@@ -721,7 +721,7 @@ private fun PairedHeader(count: Int, expanded: Boolean, modifier: Modifier = Mod
 }
 
 /** Expressive grouped list: large outer corners, tight inner corners. */
-private fun groupedShape(index: Int, count: Int): Shape {
+internal fun groupedShape(index: Int, count: Int): Shape {
   val top = if (index == 0) 24.dp else 6.dp
   val bottom = if (index == count - 1) 24.dp else 6.dp
   return RoundedCornerShape(top, top, bottom, bottom)

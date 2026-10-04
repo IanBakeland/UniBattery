@@ -127,6 +127,9 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
     }
   }
 
+  /** Same handling as the runtime receiver, for broadcasts delivered to [com.unibattery.widget.BluetoothEventReceiver]. */
+  fun onBroadcast(intent: Intent) = receiver.onReceive(context, intent)
+
   fun hasPermission(): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
       ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==

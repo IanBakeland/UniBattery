@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- All devices. 4x2 by default; resizes from a 2x1 chip strip up to a tablet-sized dashboard. -->
+<!-- All devices as rings. 2x2 by default; 2x1/4x1 give a single row. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-  android:description="@string/widget_description"
+  android:description="@string/widget_grid_description"
   android:initialLayout="@layout/glance_default_loading_layout"
-  android:minWidth="250dp"
+  android:minWidth="110dp"
   android:minHeight="110dp"
   android:minResizeWidth="110dp"
   android:minResizeHeight="50dp"
-  android:targetCellWidth="4"
+  android:targetCellWidth="2"
   android:targetCellHeight="2"
   android:resizeMode="horizontal|vertical"
   android:updatePeriodMillis="1800000"

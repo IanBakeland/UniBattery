@@ -47,4 +47,11 @@
   <string name="widget_description">Battery levels of your connected Bluetooth devices</string>
   <string name="widget_off">Bluetooth is off</string>
   <string name="widget_permission">Open the app to grant access</string>
+  <string name="widget_device_name">Device battery</string>
+  <string name="widget_grid_name">All devices (compact)</string>
+  <string name="widget_grid_description">Every connected device\'s battery as a grid of rings, even at small sizes</string>
+  <string name="widget_device_description">Battery level of one Bluetooth device</string>
+  <string name="widget_choose">Choose a device</string>
+  <string name="widget_auto">Lowest battery</string>
+  <string name="widget_auto_body">Follows whichever connected device is lowest</string>
 </resources>
