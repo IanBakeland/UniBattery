@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!-- Android 11 and lower: install-time permission. Android 12+: BLUETOOTH_CONNECT only (no scan, no location). -->
+  <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+  <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
+
+  <application
+    android:name=".App"
+    android:allowBackup="true"
+    android:icon="@mipmap/ic_launcher"
+    android:roundIcon="@mipmap/ic_launcher"
+    android:label="@string/app_name"
+    android:supportsRtl="true"
+    android:theme="@style/Theme.UniBattery">
+
+    <activity
+      android:name=".ui.MainActivity"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+
+    <service
+      android:name=".notify.BatteryNotificationService"
+      android:exported="false"
+      android:foregroundServiceType="connectedDevice" />
+
+    <receiver
+      android:name=".notify.BootReceiver"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
+
+    <receiver
+      android:name=".widget.BatteryWidgetReceiver"
+      android:exported="true"
+      android:label="@string/widget_name">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/battery_widget_info" />
+    </receiver>
+  </application>
+</manifest>

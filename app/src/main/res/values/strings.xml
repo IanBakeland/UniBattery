@@ -1,0 +1,46 @@
+<resources>
+  <string name="app_name">UniBattery</string>
+  <string name="title">Bluetooth Battery</string>
+  <plurals name="devices_connected">
+    <item quantity="one">%d device connected</item>
+    <item quantity="other">%d devices connected</item>
+  </plurals>
+  <string name="no_devices_connected">No devices connected</string>
+  <string name="refresh">Refresh</string>
+  <string name="settings">Settings</string>
+  <string name="connected">Connected</string>
+  <string name="not_connected">Not connected</string>
+  <string name="battery_unavailable">Battery unavailable</string>
+  <string name="battery_unavailable_hint">This device doesn\'t report its battery level to Android.</string>
+  <string name="percent">%d%%</string>
+  <string name="overview_lowest">Lowest: %1$s at %2$d%%</string>
+  <string name="overview_none">None of your connected devices report battery levels.</string>
+  <string name="overview_all_good">All devices above 30%%</string>
+  <string name="section_connected">Connected</string>
+  <string name="section_paired">Paired devices · %d</string>
+
+  <string name="empty_title">No devices connected</string>
+  <string name="empty_body">Connect headphones, a keyboard, a mouse or another Bluetooth accessory and it will appear here.</string>
+  <string name="permission_title">Allow access to nearby devices</string>
+  <string name="permission_body">UniBattery needs the \"Nearby devices\" permission to see which Bluetooth accessories are connected and read their battery levels. It never scans or uses your location.</string>
+  <string name="permission_button">Allow</string>
+  <string name="permission_settings_button">Open settings</string>
+  <string name="off_title">Bluetooth is off</string>
+  <string name="off_body">Turn on Bluetooth to see your devices\' battery levels.</string>
+  <string name="off_button">Turn on Bluetooth</string>
+  <string name="no_adapter_title">Bluetooth not available</string>
+  <string name="no_adapter_body">This device doesn\'t support Bluetooth.</string>
+
+  <string name="settings_notification">Battery notification</string>
+  <string name="settings_notification_body">Keep a silent notification with the battery levels of connected devices.</string>
+  <string name="settings_about">Battery levels are shown only when the device reports them to Android. Many accessories, especially older ones, don\'t.</string>
+
+  <string name="notification_channel">Battery levels</string>
+  <string name="notification_none">No Bluetooth devices connected</string>
+  <string name="notification_line">%1$s — %2$s</string>
+
+  <string name="widget_name">Bluetooth battery</string>
+  <string name="widget_description">Battery levels of your connected Bluetooth devices</string>
+  <string name="widget_off">Bluetooth is off</string>
+  <string name="widget_permission">Open the app to grant access</string>
+</resources>
