@@ -50,6 +50,9 @@ data class BtDevice(
   val connected: Boolean,
   /** 0..100, or null when the device doesn't report a level. Never estimated. */
   val battery: Int?,
+  /** Last level read while connected, and when (epoch millis). Kept so a disconnected device still shows it. */
+  val lastBattery: Int? = null,
+  val lastSeen: Long? = null,
 )
 
 data class BatteryState(
@@ -139,6 +142,9 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
     refresh(manual = false)
   }
 
+  // Last reported level per device address, as "level:epochMillis".
+  private val lastLevels = context.getSharedPreferences("last_levels", Context.MODE_PRIVATE)
+
   /** Same handling as the runtime receiver, for broadcasts delivered to [com.unibattery.widget.BluetoothEventReceiver]. */
   fun onBroadcast(intent: Intent) = receiver.onReceive(context, intent)
 
@@ -180,7 +186,7 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
     }
     val devices = coroutineScope {
       bonded.map { d -> async { toDevice(d) } }.awaitAll()
-    }.sortedWith(compareByDescending<BtDevice> { it.connected }.thenBy { it.name.lowercase() })
+    }.map(::withLastLevel).sortedWith(compareByDescending<BtDevice> { it.connected }.thenBy { it.name.lowercase() })
     return BatteryState(status, devices)
   }
 
@@ -197,6 +203,13 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
       if (battery == null) noBatteryService += d.address
     }
     return BtDevice(d.address, name, kindOverride(d.address) ?: kindOf(d.bluetoothClass?.deviceClass, name), connected, battery)
+  }
+
+  /** Saves a fresh reading, and attaches the last saved one so it survives a disconnect. */
+  private fun withLastLevel(d: BtDevice): BtDevice {
+    if (d.battery != null) lastLevels.edit().putString(d.address, "${d.battery}:${System.currentTimeMillis()}").apply()
+    val last = lastLevels.getString(d.address, null)?.split(':')
+    return d.copy(lastBattery = last?.getOrNull(0)?.toIntOrNull(), lastSeen = last?.getOrNull(1)?.toLongOrNull())
   }
 
   private fun isConnected(d: BluetoothDevice): Boolean =

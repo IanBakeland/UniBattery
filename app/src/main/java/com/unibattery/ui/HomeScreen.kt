@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.text.format.DateUtils
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts.RequestPermission
@@ -264,8 +265,11 @@ fun HomeScreen() {
 
         // Widget tiers. Lowest battery first, so whatever needs charging gets the most space: the first
         // few become medium widgets, the rest compact tiles, and silent devices (no battery report) wide strips.
-        val reporting = connected.filter { it.battery != null }.sortedBy { it.battery }
-        val silent = connected.filter { it.battery == null }
+        // Nothing connected: the same widgets show each device's last known level instead of an empty screen.
+        val live = connected.isNotEmpty()
+        val remembered = state.paired.filter { it.lastBattery != null }
+        val reporting = (if (live) connected else remembered).filter { it.shownLevel != null }.sortedBy { it.shownLevel }
+        val silent = if (live) connected.filter { it.battery == null } else emptyList()
         val featuredCount = maxOf(2, columns).let { if (reporting.size == it + 1) it + 1 else it } // no lone tile
         val featured = reporting.take(featuredCount)
         val compact = reporting.drop(featuredCount)
@@ -328,18 +332,24 @@ fun HomeScreen() {
                 }
               }
               BtStatus.On -> {
-                if (connected.isEmpty()) {
+                if (reporting.isEmpty() && silent.isEmpty()) {
                   fullItem("message") { Message(R.drawable.ic_bluetooth, R.string.empty_title, R.string.empty_body, MaterialShapes.Cookie12Sided, spin = true) }
                 } else {
-                  if (!overviewPane) fullItem("overview") { Overview(connected, large = roomy, modifier = itemMotion()) }
-                  fullItem("connected-header") { SectionHeader(stringResource(R.string.section_connected), itemMotion()) }
+                  if (live) {
+                    if (!overviewPane) fullItem("overview") { Overview(connected, large = roomy, modifier = itemMotion()) }
+                    fullItem("connected-header") { SectionHeader(stringResource(R.string.section_connected), itemMotion()) }
+                  } else {
+                    fullItem("offline") { OfflineBanner(itemMotion()) }
+                    fullItem("remembered-header") { SectionHeader(stringResource(R.string.section_last_known), itemMotion()) }
+                  }
                   // Same key across tiers, so a device whose level changes its rank glides to its new spot.
                   featured.forEach { d -> item(d.address, span = { GridItemSpan(mediumSpan) }) { DeviceCard(d, itemMotion()) { tap(); iconFor = d.address } } }
                   compact.forEach { d -> item(d.address, span = { GridItemSpan(Lanes / tilesPerRow) }) { DeviceTile(d, itemMotion()) { tap(); iconFor = d.address } } }
                   silent.forEach { d -> fullItem(d.address) { DeviceStrip(d, itemMotion()) { tap(); iconFor = d.address } } }
                   if (!overviewPane) fullItem("actions") { Box(itemMotion().padding(top = 8.dp)) { quickActions() } }
                 }
-                val paired = state.paired
+                // Remembered devices are already shown as widgets above when nothing is connected.
+                val paired = if (live) state.paired else state.paired - remembered.toSet()
                 if (paired.isNotEmpty()) {
                   fullItem("paired-header") {
                     PairedHeader(paired.size, pairedExpanded, itemMotion()) { tap(); pairedExpanded = !pairedExpanded }
@@ -587,7 +597,7 @@ internal fun DeviceIcon(device: BtDevice, size: Int = 56) {
 /** Medium widget: a device that needs attention, with a big percentage and a wavy level bar. */
 @Composable
 private fun DeviceCard(device: BtDevice, modifier: Modifier = Modifier, onClick: () -> Unit) {
-  val level = device.battery ?: return
+  val level = device.shownLevel ?: return
   val accent by animateColorAsState(levelAccent(level), MaterialTheme.motionScheme.defaultEffectsSpec(), label = "accent")
   Card(
     onClick = onClick,
@@ -608,12 +618,14 @@ private fun DeviceCard(device: BtDevice, modifier: Modifier = Modifier, onClick:
           )
           Spacer(Modifier.height(4.dp))
           Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF2E9E5B)))
+            Box(Modifier.size(8.dp).clip(CircleShape).background(if (device.connected) Connected else MaterialTheme.colorScheme.outline))
             Spacer(Modifier.width(6.dp))
             Text(
-              stringResource(R.string.connected),
+              if (device.connected) stringResource(R.string.connected) else lastSeenText(device),
               style = MaterialTheme.typography.labelMedium,
               color = MaterialTheme.colorScheme.onSurfaceVariant,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis,
             )
           }
         }
@@ -630,6 +642,7 @@ private fun DeviceCard(device: BtDevice, modifier: Modifier = Modifier, onClick:
         modifier = Modifier.fillMaxWidth().height(14.dp),
         color = accent,
         trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        amplitude = { if (device.connected) 1f else 0f }, // flat when it's a remembered level, not a live one
       )
     }
   }
@@ -638,7 +651,7 @@ private fun DeviceCard(device: BtDevice, modifier: Modifier = Modifier, onClick:
 /** Small widget: ring with the device icon inside, percentage and name. For the "everything else" devices. */
 @Composable
 private fun DeviceTile(device: BtDevice, modifier: Modifier = Modifier, onClick: () -> Unit) {
-  val level = device.battery ?: return
+  val level = device.shownLevel ?: return
   val accent by animateColorAsState(levelAccent(level), MaterialTheme.motionScheme.defaultEffectsSpec(), label = "accent")
   Surface(
     onClick = onClick,
@@ -653,6 +666,7 @@ private fun DeviceTile(device: BtDevice, modifier: Modifier = Modifier, onClick:
           modifier = Modifier.size(64.dp),
           color = accent,
           trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+          amplitude = { if (device.connected) 1f else 0f },
         )
         Icon(painterResource(device.kind.icon), null, Modifier.size(24.dp), tint = accent)
       }
@@ -665,6 +679,53 @@ private fun DeviceTile(device: BtDevice, modifier: Modifier = Modifier, onClick:
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
+      if (!device.connected) {
+        Text(
+          lastSeenText(device),
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.outline,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+    }
+  }
+}
+
+/** Live level when connected, otherwise the last one read. */
+private val BtDevice.shownLevel get() = if (connected) battery else lastBattery
+
+private val Connected = Color(0xFF2E9E5B)
+
+/** "Last seen 2 hours ago", or "just now" within the minute. */
+@Composable
+private fun lastSeenText(device: BtDevice): String {
+  val seen = device.lastSeen ?: return stringResource(R.string.not_connected)
+  val ago = if (System.currentTimeMillis() - seen < DateUtils.MINUTE_IN_MILLIS) stringResource(R.string.just_now)
+    else DateUtils.getRelativeTimeSpanString(seen).toString().replaceFirstChar { it.lowercase() } // "Yesterday" mid-sentence
+  return stringResource(R.string.last_seen, ago)
+}
+
+/** Shown above the remembered levels, so they can't be mistaken for live ones. */
+@Composable
+private fun OfflineBanner(modifier: Modifier = Modifier) {
+  Surface(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+    Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+      Box(
+        Modifier.size(44.dp).clip(MaterialShapes.Cookie9Sided.toShape()).background(MaterialTheme.colorScheme.secondary),
+        contentAlignment = Alignment.Center,
+      ) {
+        Icon(painterResource(R.drawable.ic_bluetooth_off), null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSecondary)
+      }
+      Spacer(Modifier.width(14.dp))
+      Column {
+        Text(stringResource(R.string.empty_title), style = MaterialTheme.typography.titleMediumEmphasized)
+        Text(
+          stringResource(R.string.offline_body),
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
+        )
+      }
     }
   }
 }
@@ -679,7 +740,7 @@ private fun DeviceStrip(device: BtDevice, modifier: Modifier = Modifier, onClick
       Column(Modifier.weight(1f)) {
         Text(device.name, style = MaterialTheme.typography.titleSmallEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Row(verticalAlignment = Alignment.CenterVertically) {
-          Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF2E9E5B)))
+          Box(Modifier.size(8.dp).clip(CircleShape).background(Connected))
           Spacer(Modifier.width(6.dp))
           Text(
             stringResource(R.string.connected) + " · " + stringResource(R.string.battery_unavailable),
@@ -750,7 +811,10 @@ private fun PairedRow(device: BtDevice, shape: Shape, modifier: Modifier = Modif
   ) {
     ListItem(
       headlineContent = { Text(device.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-      supportingContent = { Text(stringResource(R.string.not_connected)) },
+      supportingContent = {
+        val level = device.lastBattery
+        Text(if (level == null) stringResource(R.string.not_connected) else stringResource(R.string.percent, level) + " · " + lastSeenText(device))
+      },
       leadingContent = { DeviceIcon(device, size = 40) },
       colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
