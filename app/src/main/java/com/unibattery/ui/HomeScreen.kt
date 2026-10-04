@@ -267,7 +267,7 @@ fun HomeScreen() {
         // few become medium widgets, the rest compact tiles, and silent devices (no battery report) wide strips.
         // Nothing connected: the same widgets show each device's last known level instead of an empty screen.
         val live = connected.isNotEmpty()
-        val remembered = state.paired.filter { it.lastBattery != null }
+        val remembered = state.paired.filter { it.lastBattery != null }.sortedBy { it.lastBattery }
         val reporting = (if (live) connected else remembered).filter { it.shownLevel != null }.sortedBy { it.shownLevel }
         val silent = if (live) connected.filter { it.battery == null } else emptyList()
         val featuredCount = maxOf(2, columns).let { if (reporting.size == it + 1) it + 1 else it } // no lone tile
@@ -275,6 +275,8 @@ fun HomeScreen() {
         val compact = reporting.drop(featuredCount)
         val mediumSpan = Lanes / columns
         val tilesPerRow = listOf(6, 4, 3, 2).first { it <= TilesPerRow[columns - 1] && it <= maxOf(2, compact.size) }
+        // While something is connected, remembered devices get their own section of compact tiles below it.
+        val rememberedPerRow = listOf(6, 4, 3, 2).first { it <= TilesPerRow[columns - 1] && it <= maxOf(2, remembered.size) }
         val quickActions = @Composable {
           QuickActions(
             notifyOn = notifyOn,
@@ -346,10 +348,14 @@ fun HomeScreen() {
                   featured.forEach { d -> item(d.address, span = { GridItemSpan(mediumSpan) }) { DeviceCard(d, itemMotion()) { tap(); iconFor = d.address } } }
                   compact.forEach { d -> item(d.address, span = { GridItemSpan(Lanes / tilesPerRow) }) { DeviceTile(d, itemMotion()) { tap(); iconFor = d.address } } }
                   silent.forEach { d -> fullItem(d.address) { DeviceStrip(d, itemMotion()) { tap(); iconFor = d.address } } }
+                  if (live && remembered.isNotEmpty()) {
+                    fullItem("remembered-header") { SectionHeader(stringResource(R.string.section_last_known), itemMotion()) }
+                    remembered.forEach { d -> item(d.address, span = { GridItemSpan(Lanes / rememberedPerRow) }) { DeviceTile(d, itemMotion()) { tap(); iconFor = d.address } } }
+                  }
                   if (!overviewPane) fullItem("actions") { Box(itemMotion().padding(top = 8.dp)) { quickActions() } }
                 }
-                // Remembered devices are already shown as widgets above when nothing is connected.
-                val paired = if (live) state.paired else state.paired - remembered.toSet()
+                // Only devices with nothing remembered; the rest are shown above.
+                val paired = state.paired - remembered.toSet()
                 if (paired.isNotEmpty()) {
                   fullItem("paired-header") {
                     PairedHeader(paired.size, pairedExpanded, itemMotion()) { tap(); pairedExpanded = !pairedExpanded }
@@ -807,10 +813,7 @@ private fun PairedRow(device: BtDevice, shape: Shape, modifier: Modifier = Modif
   ) {
     ListItem(
       headlineContent = { Text(device.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-      supportingContent = {
-        val level = device.lastBattery
-        Text(if (level == null) stringResource(R.string.not_connected) else stringResource(R.string.percent, level) + " · " + lastSeenText(device))
-      },
+      supportingContent = { Text(stringResource(R.string.not_connected)) },
       leadingContent = { DeviceIcon(device, size = 40) },
       colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )

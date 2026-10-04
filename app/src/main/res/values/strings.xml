@@ -19,7 +19,7 @@
   <string name="percent">%d%%</string>
   <string name="overview_lowest">Lowest: %1$s at %2$d%%</string>
   <string name="overview_none">None of your connected devices report battery levels.</string>
-  <string name="overview_all_good" formatted="false">All devices above 30%</string>
+  <string name="overview_all_good" formatted="false">All connected devices above 30%</string>
   <string name="section_connected">Connected</string>
   <string name="overview_highest">Highest %d%%</string>
   <string name="action_bluetooth_settings">Bluetooth settings</string>

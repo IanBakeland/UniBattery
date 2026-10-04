@@ -354,11 +354,13 @@ internal fun statusMessage(state: BatteryState): Int? = when (state.status) {
 }
 
 /**
- * Same priority as the app: connected devices, or when none are, the ones with a remembered level.
- * Lowest battery first, devices that don't report battery last.
+ * Same priority as the app: connected devices first (lowest battery first, devices that don't report battery
+ * last), then disconnected ones with a remembered level. Live first, so a device last seen months ago at 5%
+ * doesn't take over the "lowest" spot.
  */
 internal fun shownDevices(state: BatteryState): List<BtDevice> =
-  state.connected.ifEmpty { state.paired.filter { it.lastBattery != null } }.sortedWith(compareBy(nullsLast()) { it.shownLevel })
+  state.connected.sortedWith(compareBy(nullsLast()) { it.battery }) +
+    state.paired.filter { it.lastBattery != null }.sortedBy { it.lastBattery }
 
 /**
  * "Last seen Sat 2:05 PM", or just "Sat 2:05 PM" for small tiles ([prefix] false). A clock time rather than
