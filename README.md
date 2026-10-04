@@ -10,9 +10,10 @@
 Headphones, mouse, keyboard, controller, watch: every one of them seems to want its own companion app just so you can see how much battery is left. Or you dig through Bluetooth settings every time. UniBattery shows them all in one place, so a quick look at your home screen is enough.
 
 <p>
-  <img src="docs/screenshots/dashboard.png" width="250" alt="Dashboard">
-  <img src="docs/screenshots/widgets.png" width="250" alt="Home screen widgets">
-  <img src="docs/screenshots/icon-picker.png" width="250" alt="Icon picker">
+  <img src="docs/screenshots/dashboard.png" width="200" alt="Dashboard">
+  <img src="docs/screenshots/last-known.png" width="200" alt="Last known battery when nothing is connected">
+  <img src="docs/screenshots/widgets.png" width="200" alt="Home screen widgets">
+  <img src="docs/screenshots/icon-picker.png" width="200" alt="Icon picker">
 </p>
 
 > [!NOTE]
@@ -22,6 +23,7 @@ Headphones, mouse, keyboard, controller, watch: every one of them seems to want 
 
 - 🏠 **Home-screen widget**: all connected devices and their battery levels at a glance
 - 📱 **Dashboard app**: Material 3 Expressive UI with an icon per device type
+- 🕘 **Last known battery**: when a device isn't connected, see the level it had last time, so you know whether to charge it before you connect
 - 🔔 **Optional notification**: a silent, persistent notification that keeps the levels current
 - 🔒 **Minimal permissions**: no location, no scanning, only access to devices you have already paired
 
