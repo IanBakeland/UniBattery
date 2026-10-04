@@ -26,7 +26,9 @@ Headphones, mouse, keyboard, controller, watch: every one of them seems to want 
 
 ## 🚀 Getting started
 
-There's no Play Store release. Build it yourself with Android Studio, or from the command line:
+There's no Play Store release. Download the latest APK from [Releases](https://github.com/IanBakeland/UniBattery/releases/latest), open it on your phone and allow installing from that source when asked.
+
+Or build it yourself with Android Studio, or from the command line:
 
 ```bash
 git clone https://github.com/IanBakeland/UniBattery.git
@@ -35,7 +37,7 @@ cd UniBattery
 ./gradlew :app:testDebugUnitTest # run unit tests
 ```
 
-Then add the **UniBattery** widget from your launcher's widget picker.
+Then add a widget from your launcher's widget picker: **Bluetooth battery** (all devices), **Device battery** (one device) or **All devices (compact)** (a grid of rings for small sizes).
 
 ## 🔍 Where battery levels come from
 
