@@ -15,12 +15,26 @@
   <string name="percent">%d%%</string>
   <string name="overview_lowest">Lowest: %1$s at %2$d%%</string>
   <string name="overview_none">None of your connected devices report battery levels.</string>
-  <string name="overview_all_good">All devices above 30%%</string>
+  <string name="overview_all_good" formatted="false">All devices above 30%</string>
   <string name="section_connected">Connected</string>
   <string name="overview_average">Average %d%%</string>
   <string name="overview_highest">Highest %d%%</string>
   <string name="action_bluetooth_settings">Bluetooth settings</string>
   <string name="action_notification">Notification</string>
+  <string name="icon_title">Icon</string>
+  <string name="icon_auto">Automatic</string>
+  <string name="kind_headphones">Headphones</string>
+  <string name="kind_headset">Headset</string>
+  <string name="kind_speaker">Speaker</string>
+  <string name="kind_keyboard">Keyboard</string>
+  <string name="kind_mouse">Mouse</string>
+  <string name="kind_pen">Pen</string>
+  <string name="kind_gamepad">Controller</string>
+  <string name="kind_watch">Watch</string>
+  <string name="kind_car">Car</string>
+  <string name="kind_phone">Phone</string>
+  <string name="kind_computer">Computer</string>
+  <string name="kind_other">Other</string>
   <string name="section_paired">Paired devices · %d</string>
 
   <string name="empty_title">No devices connected</string>

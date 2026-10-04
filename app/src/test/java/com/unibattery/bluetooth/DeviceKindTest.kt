@@ -14,6 +14,11 @@ class DeviceKindTest {
     assertEquals(DeviceKind.Keyboard, kindOf(0x05C0, "x")) // combo keyboard/pointer
     assertEquals(DeviceKind.Mouse, kindOf(0x0580, "x"))
     assertEquals(DeviceKind.Gamepad, kindOf(0x0508, "x"))
+    assertEquals(DeviceKind.Gamepad, kindOf(0x0504, "x")) // joystick
+    // Sub-type is a value, not flags: pens and tablets used to come out as gamepads.
+    assertEquals(DeviceKind.Pen, kindOf(0x051C, "x")) // digital pen
+    assertEquals(DeviceKind.Pen, kindOf(0x0514, "x")) // digitizer tablet
+    assertEquals(DeviceKind.Other, kindOf(0x050C, "x")) // remote control
     assertEquals(DeviceKind.Watch, kindOf(0x0704, "x"))
   }
 
@@ -21,6 +26,9 @@ class DeviceKindTest {
     assertEquals(DeviceKind.Mouse, kindOf(null, "MX Master 3S"))
     assertEquals(DeviceKind.Headphones, kindOf(0, "AirPods Pro"))
     assertEquals(DeviceKind.Other, kindOf(null, "Thing"))
+    assertEquals(DeviceKind.Pen, kindOf(null, "Apple Pencil"))
+    assertEquals(DeviceKind.Pen, kindOf(null, "Galaxy S Pen Pro"))
+    assertEquals(DeviceKind.Other, kindOf(null, "Open Run")) // "pen" inside a word isn't a pen
     assertEquals(DeviceKind.Keyboard, kindOf(0x0540, "Mouse-named keyboard"))
   }
 

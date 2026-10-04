@@ -109,6 +109,15 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.TonalToggleButton
 import androidx.graphics.shapes.RoundedPolygon
+import androidx.compose.material3.ToggleButton
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.asComposePath
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.graphics.shapes.Morph
+import androidx.graphics.shapes.toPath
+import com.unibattery.bluetooth.DeviceKind
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.LaunchedEffect
@@ -135,6 +144,7 @@ fun HomeScreen() {
   val repo = context.repository
   val state by repo.state.collectAsStateWithLifecycle()
   var showSettings by rememberSaveable { mutableStateOf(false) }
+  var iconFor by rememberSaveable { mutableStateOf<String?>(null) } // device whose icon picker is open
   var pairedExpanded by rememberSaveable { mutableStateOf(false) }
   var permissionBlocked by rememberSaveable { mutableStateOf(false) }
 
@@ -324,9 +334,9 @@ fun HomeScreen() {
                   if (!overviewPane) fullItem("overview") { Overview(connected, large = roomy, modifier = itemMotion()) }
                   fullItem("connected-header") { SectionHeader(stringResource(R.string.section_connected), itemMotion()) }
                   // Same key across tiers, so a device whose level changes its rank glides to its new spot.
-                  featured.forEach { d -> item(d.address, span = { GridItemSpan(mediumSpan) }) { DeviceCard(d, itemMotion()) } }
-                  compact.forEach { d -> item(d.address, span = { GridItemSpan(Lanes / tilesPerRow) }) { DeviceTile(d, itemMotion()) } }
-                  silent.forEach { d -> fullItem(d.address) { DeviceStrip(d, itemMotion()) } }
+                  featured.forEach { d -> item(d.address, span = { GridItemSpan(mediumSpan) }) { DeviceCard(d, itemMotion()) { tap(); iconFor = d.address } } }
+                  compact.forEach { d -> item(d.address, span = { GridItemSpan(Lanes / tilesPerRow) }) { DeviceTile(d, itemMotion()) { tap(); iconFor = d.address } } }
+                  silent.forEach { d -> fullItem(d.address) { DeviceStrip(d, itemMotion()) { tap(); iconFor = d.address } } }
                   if (!overviewPane) fullItem("actions") { Box(itemMotion().padding(top = 8.dp)) { quickActions() } }
                 }
                 val paired = state.paired
@@ -338,14 +348,14 @@ fun HomeScreen() {
                     if (columns == 1) {
                       fullItem("paired-list") {
                         Column(itemMotion(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                          paired.forEachIndexed { i, d -> PairedRow(d, groupedShape(i, paired.size)) }
+                          paired.forEachIndexed { i, d -> PairedRow(d, groupedShape(i, paired.size)) { tap(); iconFor = d.address } }
                         }
                       }
                     } else {
                       // A grouped list can't span grid cells, so each paired device becomes its own tile. Same key
                       // as its connected card, so a device that disconnects glides into this section.
                       paired.forEach { d ->
-                        item(d.address, span = { GridItemSpan(mediumSpan) }) { PairedRow(d, RoundedCornerShape(24.dp), itemMotion()) }
+                        item(d.address, span = { GridItemSpan(mediumSpan) }) { PairedRow(d, RoundedCornerShape(24.dp), itemMotion()) { tap(); iconFor = d.address } }
                       }
                     }
                   }
@@ -361,6 +371,7 @@ fun HomeScreen() {
   if (showSettings) {
     SettingsSheet(state.status, notifyOn, onNotifyChange = setNotify, onDismiss = { showSettings = false })
   }
+  state.devices.find { it.address == iconFor }?.let { device -> IconSheet(device, onDismiss = { iconFor = null }) }
 }
 
 @Composable
@@ -575,10 +586,11 @@ internal fun DeviceIcon(device: BtDevice, size: Int = 56) {
 
 /** Medium widget: a device that needs attention, with a big percentage and a wavy level bar. */
 @Composable
-private fun DeviceCard(device: BtDevice, modifier: Modifier = Modifier) {
+private fun DeviceCard(device: BtDevice, modifier: Modifier = Modifier, onClick: () -> Unit) {
   val level = device.battery ?: return
   val accent by animateColorAsState(levelAccent(level), MaterialTheme.motionScheme.defaultEffectsSpec(), label = "accent")
   Card(
+    onClick = onClick,
     modifier = modifier.fillMaxWidth(),
     shape = RoundedCornerShape(28.dp),
     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceBright),
@@ -625,10 +637,11 @@ private fun DeviceCard(device: BtDevice, modifier: Modifier = Modifier) {
 
 /** Small widget: ring with the device icon inside, percentage and name. For the "everything else" devices. */
 @Composable
-private fun DeviceTile(device: BtDevice, modifier: Modifier = Modifier) {
+private fun DeviceTile(device: BtDevice, modifier: Modifier = Modifier, onClick: () -> Unit) {
   val level = device.battery ?: return
   val accent by animateColorAsState(levelAccent(level), MaterialTheme.motionScheme.defaultEffectsSpec(), label = "accent")
   Surface(
+    onClick = onClick,
     modifier = modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
     shape = RoundedCornerShape(28.dp),
     color = MaterialTheme.colorScheme.surfaceBright,
@@ -658,8 +671,8 @@ private fun DeviceTile(device: BtDevice, modifier: Modifier = Modifier) {
 
 /** Wide widget: connection status for a device that doesn't report battery, so it doesn't need a whole card. */
 @Composable
-private fun DeviceStrip(device: BtDevice, modifier: Modifier = Modifier) {
-  Surface(modifier = modifier.fillMaxWidth(), shape = CircleShape, color = MaterialTheme.colorScheme.surfaceBright) {
+private fun DeviceStrip(device: BtDevice, modifier: Modifier = Modifier, onClick: () -> Unit) {
+  Surface(onClick = onClick, modifier = modifier.fillMaxWidth(), shape = CircleShape, color = MaterialTheme.colorScheme.surfaceBright) {
     Row(Modifier.padding(start = 10.dp, end = 24.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
       DeviceIcon(device, size = 44)
       Spacer(Modifier.width(14.dp))
@@ -728,8 +741,9 @@ internal fun groupedShape(index: Int, count: Int): Shape {
 }
 
 @Composable
-private fun PairedRow(device: BtDevice, shape: Shape, modifier: Modifier = Modifier) {
+private fun PairedRow(device: BtDevice, shape: Shape, modifier: Modifier = Modifier, onClick: () -> Unit) {
   Surface(
+    onClick = onClick,
     modifier = modifier,
     shape = shape,
     color = MaterialTheme.colorScheme.surfaceBright,
@@ -788,6 +802,84 @@ private fun Message(
       Spacer(Modifier.height(24.dp))
       action()
     }
+  }
+}
+
+/** Icon picker: tap a device to pin its icon. The chosen one morphs from a circle into the app's cookie shape. */
+@Composable
+private fun IconSheet(device: BtDevice, onDismiss: () -> Unit) {
+  val repo = LocalContext.current.repository
+  val haptics = LocalHapticFeedback.current
+  var pinned by remember(device.address) { mutableStateOf(repo.kindOverride(device.address)) }
+  fun pick(kind: DeviceKind?) {
+    haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+    pinned = kind
+    repo.setKind(device.address, kind)
+  }
+
+  ModalBottomSheet(onDismissRequest = onDismiss) {
+    Column(Modifier.padding(horizontal = 24.dp).navigationBarsPadding().padding(bottom = 16.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        DeviceIcon(device, size = 56)
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+          Text(device.name, style = MaterialTheme.typography.titleLargeEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
+          Text(stringResource(R.string.icon_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        ToggleButton(checked = pinned == null, onCheckedChange = { if (it) pick(null) }) {
+          Text(stringResource(R.string.icon_auto))
+        }
+      }
+      Spacer(Modifier.height(24.dp))
+      FlowRow(
+        Modifier.fillMaxWidth(),
+        maxItemsInEachRow = 4,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+      ) {
+        DeviceKind.entries.forEach { kind ->
+          KindOption(kind, selected = (pinned ?: device.kind) == kind, Modifier.weight(1f)) { pick(kind) }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun KindOption(kind: DeviceKind, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+  val progress by animateFloatAsState(if (selected) 1f else 0f, MaterialTheme.motionScheme.defaultSpatialSpec(), label = "morph")
+  val container by animateColorAsState(
+    if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+    MaterialTheme.motionScheme.defaultEffectsSpec(), label = "container",
+  )
+  val content = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+  Column(
+    modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(vertical = 6.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    Box(
+      Modifier.size(60.dp).clip(remember(progress) { MorphShape(CircleToCookie, progress) }).background(container),
+      contentAlignment = Alignment.Center,
+    ) {
+      Icon(painterResource(kind.icon), null, tint = content, modifier = Modifier.size(26.dp))
+    }
+    Spacer(Modifier.height(6.dp))
+    Text(
+      stringResource(kind.label),
+      style = if (selected) MaterialTheme.typography.labelMediumEmphasized else MaterialTheme.typography.labelMedium,
+      color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+      maxLines = 1,
+    )
+  }
+}
+
+private val CircleToCookie = Morph(MaterialShapes.Circle.normalized(), MaterialShapes.Cookie9Sided.normalized())
+
+/** A [Morph] frozen at [progress], scaled to the component's size. */
+private class MorphShape(private val morph: Morph, private val progress: Float) : Shape {
+  override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+    val path = morph.toPath(progress)
+    path.transform(android.graphics.Matrix().apply { setScale(size.width, size.height) })
+    return Outline.Generic(path.asComposePath())
   }
 }
 

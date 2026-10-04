@@ -127,6 +127,18 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
     }
   }
 
+  // Icons the user picked, by device address. Used everywhere a device is shown (app, widgets, notification).
+  private val icons = context.getSharedPreferences("device_icons", Context.MODE_PRIVATE)
+
+  fun kindOverride(address: String): DeviceKind? =
+    icons.getString(address, null)?.let { name -> DeviceKind.entries.find { it.name == name } }
+
+  /** Pins a device's icon, or null to go back to automatic detection. */
+  fun setKind(address: String, kind: DeviceKind?) {
+    icons.edit().apply { if (kind == null) remove(address) else putString(address, kind.name) }.apply()
+    refresh(manual = false)
+  }
+
   /** Same handling as the runtime receiver, for broadcasts delivered to [com.unibattery.widget.BluetoothEventReceiver]. */
   fun onBroadcast(intent: Intent) = receiver.onReceive(context, intent)
 
@@ -184,7 +196,7 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
       battery = gattLevels[d.address] ?: readGattBattery(d)?.also { gattLevels[d.address] = it }
       if (battery == null) noBatteryService += d.address
     }
-    return BtDevice(d.address, name, kindOf(d.bluetoothClass?.deviceClass, name), connected, battery)
+    return BtDevice(d.address, name, kindOverride(d.address) ?: kindOf(d.bluetoothClass?.deviceClass, name), connected, battery)
   }
 
   private fun isConnected(d: BluetoothDevice): Boolean =
