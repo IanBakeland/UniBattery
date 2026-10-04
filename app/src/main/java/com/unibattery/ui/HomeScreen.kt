@@ -540,7 +540,6 @@ private fun Overview(devices: List<BtDevice>, modifier: Modifier = Modifier, lar
           horizontalArrangement = Arrangement.spacedBy(8.dp, if (vertical) Alignment.CenterHorizontally else Alignment.Start),
           verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-          StatPill(stringResource(R.string.overview_average, reporting.sumOf { it.battery!! } / reporting.size), onContainer)
           StatPill(stringResource(R.string.overview_highest, reporting.maxOf { it.battery!! }), onContainer)
         }
       }

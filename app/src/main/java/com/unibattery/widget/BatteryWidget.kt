@@ -261,23 +261,15 @@ private fun LowestRing(lowest: BtDevice, size: Dp) {
   }
 }
 
-/** "Lowest: X" plus the average, mirroring the in-app overview. */
+/** Name of the lowest device, next to its ring. */
 @Composable
 private fun Summary(devices: List<BtDevice>, modifier: GlanceModifier, center: Boolean = false) {
-  val context = LocalContext.current
-  val reporting = devices.mapNotNull { it.battery }
   val align = if (center) TextAlign.Center else TextAlign.Start
   Column(modifier, horizontalAlignment = if (center) Alignment.CenterHorizontally else Alignment.Start) {
     Text(
       devices.first().name, maxLines = 2,
       style = textStyle(14.sp, GlanceTheme.colors.onSurface, bold = true).copy(textAlign = align),
     )
-    if (reporting.size > 1) {
-      Text(
-        context.getString(R.string.overview_average, reporting.sum() / reporting.size), maxLines = 1,
-        style = textStyle(12.sp, GlanceTheme.colors.onSurfaceVariant).copy(textAlign = align),
-      )
-    }
   }
 }
 
