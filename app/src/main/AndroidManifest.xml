@@ -89,6 +89,16 @@
       </intent-filter>
     </activity>
 
+    <activity
+      android:name=".ui.WidgetSettingsActivity"
+      android:exported="true"
+      android:excludeFromRecents="true"
+      android:taskAffinity="">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+      </intent-filter>
+    </activity>
+
     <!-- Connect/disconnect are exempt from implicit-broadcast limits, so widgets update even when the app isn't running. -->
     <receiver
       android:name=".widget.BluetoothEventReceiver"

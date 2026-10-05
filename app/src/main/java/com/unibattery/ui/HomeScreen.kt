@@ -949,7 +949,7 @@ private class MorphShape(private val morph: Morph, private val progress: Float) 
 @Composable
 private fun SettingsSheet(status: BtStatus, notifyOn: Boolean, onNotifyChange: (Boolean) -> Unit, onDismiss: () -> Unit) {
   ModalBottomSheet(onDismissRequest = onDismiss) {
-    Column(Modifier.padding(horizontal = 16.dp).navigationBarsPadding().padding(bottom = 16.dp)) {
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).navigationBarsPadding().padding(bottom = 16.dp)) {
       Text(
         stringResource(R.string.settings),
         style = MaterialTheme.typography.headlineSmallEmphasized,
@@ -969,6 +969,7 @@ private fun SettingsSheet(status: BtStatus, notifyOn: Boolean, onNotifyChange: (
           colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         )
       }
+      WidgetSettings()
       Spacer(Modifier.height(16.dp))
       Row(Modifier.padding(horizontal = 8.dp)) {
         Icon(

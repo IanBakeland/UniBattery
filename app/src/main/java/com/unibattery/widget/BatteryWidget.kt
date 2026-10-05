@@ -7,7 +7,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.text.format.DateUtils
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -86,7 +85,7 @@ class BatteryWidget : GlanceAppWidget() {
     val repo = context.repository
     provideContent {
       val state by repo.state.collectAsState()
-      GlanceTheme { CompositionLocalProvider(LocalRefreshing provides state.refreshing) { Dashboard(state) } }
+      WidgetTheme(state) { Dashboard(it) }
     }
   }
 }
@@ -332,15 +331,17 @@ internal fun MessageLayout(message: Int) {
 
 // ---- Shared widget parts (also used by DeviceWidget) ----
 
-internal val WidgetRadius = 28.dp
-
 internal fun openApp(): Action = actionStartActivity<MainActivity>()
 
 /** Rounded widget container; the whole widget opens the app. */
 @Composable
 internal fun WidgetSurface(content: @Composable () -> Unit) {
+  val style = LocalWidgetStyle.current
+  val background = GlanceTheme.colors.widgetBackground.let {
+    if (style.opacity < 100) it.withAlpha(LocalContext.current, style.opacity / 100f) else it
+  }
   Box(
-    GlanceModifier.fillMaxSize().background(GlanceTheme.colors.widgetBackground).cornerRadius(WidgetRadius).clickable(openApp()),
+    GlanceModifier.fillMaxSize().background(background).cornerRadius(style.cornerRadius.dp).clickable(openApp()),
     contentAlignment = Alignment.Center,
   ) { content() }
 }
@@ -387,8 +388,10 @@ internal fun glyphTint(d: BtDevice): ColorProvider = accentFor(if (d.connected) 
 internal fun percentText(level: Int?): String =
   if (level != null) LocalContext.current.getString(R.string.percent, level) else "—"
 
+/** Text style with the user's widget text size applied. */
+@Composable
 internal fun textStyle(size: TextUnit, color: ColorProvider, bold: Boolean = false) =
-  TextStyle(color = color, fontSize = size, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal)
+  TextStyle(color = color, fontSize = size * (LocalWidgetStyle.current.textScale / 100f), fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal)
 
 /** Same colour roles as the app: error when critical, tertiary when low, primary otherwise. */
 @Composable

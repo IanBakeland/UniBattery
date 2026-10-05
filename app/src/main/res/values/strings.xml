@@ -54,6 +54,15 @@
 
   <string name="settings_notification">Battery notification</string>
   <string name="settings_notification_body">Keep a silent notification with the battery levels of connected devices.</string>
+  <string name="settings_widgets">Widgets</string>
+  <string name="settings_widget_opacity">Background opacity</string>
+  <string name="settings_widget_corners">Corner roundness</string>
+  <string name="settings_widget_text">Text size</string>
+  <string name="settings_widget_wallpaper">Wallpaper colours</string>
+  <string name="settings_widget_wallpaper_body">Match the colours of your wallpaper instead of UniBattery\'s own.</string>
+  <string name="settings_widget_last_known">Show last known battery</string>
+  <string name="settings_widget_last_known_body">Show remembered levels for devices that aren\'t connected.</string>
+  <string name="dp_value">%d dp</string>
   <string name="settings_about">Battery levels are shown only when the device reports them to Android. Many accessories, especially older ones, don\'t.</string>
 
   <string name="notification_channel">Battery levels</string>

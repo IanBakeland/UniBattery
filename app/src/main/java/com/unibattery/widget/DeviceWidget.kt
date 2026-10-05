@@ -29,7 +29,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -74,6 +73,7 @@ import com.unibattery.bluetooth.BtStatus
 import com.unibattery.repository
 import com.unibattery.ui.AppTheme
 import com.unibattery.ui.DeviceIcon
+import com.unibattery.ui.WidgetSettings
 import com.unibattery.ui.groupedShape
 import kotlinx.coroutines.launch
 
@@ -93,7 +93,7 @@ class DeviceWidget : GlanceAppWidget() {
     provideContent {
       val state by repo.state.collectAsState()
       val address = currentState(DEVICE_KEY)
-      GlanceTheme { CompositionLocalProvider(LocalRefreshing provides state.refreshing) { DeviceContent(state, address) } }
+      WidgetTheme(state) { DeviceContent(it, address) }
     }
   }
 }
@@ -305,6 +305,7 @@ private fun DevicePicker(devices: List<BtDevice>, onPick: (String?) -> Unit) {
           )
         }
       }
+      item("style") { WidgetSettings() }
     }
   }
 }

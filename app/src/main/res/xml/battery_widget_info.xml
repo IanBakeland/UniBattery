@@ -3,6 +3,8 @@
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
   android:description="@string/widget_description"
   android:initialLayout="@layout/glance_default_loading_layout"
+  android:configure="com.unibattery.ui.WidgetSettingsActivity"
+  android:widgetFeatures="reconfigurable|configuration_optional"
   android:minWidth="250dp"
   android:minHeight="110dp"
   android:minResizeWidth="110dp"

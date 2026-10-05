@@ -2,7 +2,6 @@ package com.unibattery.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.Dp
@@ -10,7 +9,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
-import androidx.glance.GlanceTheme
 import androidx.glance.LocalSize
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -44,13 +42,11 @@ class GridWidget : GlanceAppWidget() {
     val repo = context.repository
     provideContent {
       val state by repo.state.collectAsState()
-      GlanceTheme {
-        CompositionLocalProvider(LocalRefreshing provides state.refreshing) {
-          val message = statusMessage(state)
-          WidgetSurface {
-            if (message != null) MessageLayout(message)
-            else RingGrid(shownDevices(state))
-          }
+      WidgetTheme(state) { shown ->
+        val message = statusMessage(shown)
+        WidgetSurface {
+          if (message != null) MessageLayout(message)
+          else RingGrid(shownDevices(shown))
         }
       }
     }

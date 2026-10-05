@@ -4,8 +4,10 @@ import android.app.Application
 import android.content.Context
 import com.unibattery.bluetooth.BatteryRepository
 import com.unibattery.notify.BatteryNotificationService
+import com.unibattery.widget.WidgetStyle
 import com.unibattery.widget.updateWidgets
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
@@ -15,14 +17,18 @@ class App : Application() {
   private val scope = MainScope()
   lateinit var repository: BatteryRepository
     private set
+  lateinit var widgetStyle: MutableStateFlow<WidgetStyle>
+    private set
 
   override fun onCreate() {
     super.onCreate()
     repository = BatteryRepository(this, scope)
+    widgetStyle = MutableStateFlow(WidgetStyle.load(this))
     scope.launch {
       repository.state.map { it.copy(refreshing = false) }.distinctUntilChanged().drop(1)
         .collect { updateWidgets(this@App) }
     }
+    scope.launch { widgetStyle.drop(1).collect { updateWidgets(this@App) } }
     BatteryNotificationService.sync(this)
   }
 }

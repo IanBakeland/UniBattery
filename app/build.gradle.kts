@@ -11,8 +11,8 @@ android {
     applicationId = "com.unibattery"
     minSdk = 26
     targetSdk = 36
-    versionCode = 6
-    versionName = "1.0.5"
+    versionCode = 7
+    versionName = "1.0.6"
   }
 
   // Release signing credentials live in ~/.gradle/gradle.properties, never in the repo. Without them
@@ -50,5 +50,6 @@ dependencies {
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.compose.material3)
   implementation(libs.androidx.glance.appwidget)
+  implementation(libs.androidx.glance.material3)
   testImplementation(libs.junit)
 }

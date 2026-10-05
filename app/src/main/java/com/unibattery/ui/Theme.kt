@@ -21,8 +21,13 @@ fun AppTheme(content: @Composable () -> Unit) {
   val colors = when {
     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
       if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-    dark -> darkColorScheme(primary = Color(0xFFB8C4FF), primaryContainer = Color(0xFF1B3DBE))
-    else -> expressiveLightColorScheme()
+    dark -> FixedDarkColors
+    else -> FixedLightColors
   }
   MaterialExpressiveTheme(colorScheme = colors, motionScheme = MotionScheme.expressive(), content = content)
 }
+
+/** Colours used without dynamic colour (before Android 12, or widgets set to ignore the wallpaper). */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+val FixedLightColors = expressiveLightColorScheme()
+val FixedDarkColors = darkColorScheme(primary = Color(0xFFB8C4FF), primaryContainer = Color(0xFF1B3DBE))
