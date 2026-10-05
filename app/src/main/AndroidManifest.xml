@@ -4,6 +4,8 @@
   <!-- Android 11 and lower: install-time permission. Android 12+: BLUETOOTH_CONNECT only (no scan, no location). -->
   <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
   <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+  <!-- Android 12+: only to read AirPods battery from their advertisements. Same "Nearby devices" permission as connect. -->
+  <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
