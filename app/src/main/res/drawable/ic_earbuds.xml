@@ -1,5 +1,6 @@
+<!-- "earbuds" from Pictogrammers Material Design Icons (Apache-2.0), https://pictogrammers.com/library/mdi/ -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
   android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"
   android:tint="?android:attr/colorControlNormal">
-  <path android:fillColor="@android:color/white" android:pathData="M6.2,3.01C4.44,2.89 3,4.42 3,6.19L3,16c0,2.76 2.24,5 5,5h0c2.76,0 5,-2.24 5,-5V8c0,-1.66 1.34,-3 3,-3h0c1.66,0 3,1.34 3,3v7l-0.83,0c-1.61,0 -3.06,1.18 -3.17,2.79c-0.12,1.69 1.16,3.1 2.8,3.21c1.76,0.12 3.2,-1.42 3.2,-3.18L21,8c0,-2.76 -2.24,-5 -5,-5h0c-2.76,0 -5,2.24 -5,5v8c0,1.66 -1.34,3 -3,3l0,0c-1.66,0 -3,-1.34 -3,-3V9l0.83,0C7.44,9 8.89,7.82 9,6.21C9.11,4.53 7.83,3.11 6.2,3.01z" />
+  <path android:fillColor="@android:color/white" android:pathData="M10,8V20C10,20.55 9.55,21 9,21H8C7.45,21 7,20.55 7,20V13.27C6.32,13.72 5.61,14 5,14C3,14 2,12 2,11V6C2,5 3,3 5,3S10,6 10,8M16.5,3C13.46,3 11,5.46 11,8.5S13.46,14 16.5,14 22,11.54 22,8.5 19.54,3 16.5,3M14.5,14.68V20C14.5,20.55 14.95,21 15.5,21H17.5C18.05,21 18.5,20.55 18.5,20V14.68C17.87,14.89 17.2,15 16.5,15S15.13,14.89 14.5,14.68Z" />
 </vector>

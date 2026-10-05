@@ -73,6 +73,7 @@ Devices that only report battery through their own proprietary protocol (some ea
 
 - Kotlin and Jetpack Compose (Material 3)
 - Jetpack Glance for the widget
+- Earbuds icon from [Pictogrammers Material Design Icons](https://pictogrammers.com/library/mdi/) (Apache-2.0)
 
 ## 📄 License
 
