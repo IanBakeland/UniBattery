@@ -24,12 +24,21 @@ class DeviceKindTest {
 
   @Test fun nameFallbackOnlyWithoutClass() {
     assertEquals(DeviceKind.Mouse, kindOf(null, "MX Master 3S"))
-    assertEquals(DeviceKind.Headphones, kindOf(0, "AirPods Pro"))
+    assertEquals(DeviceKind.Earbuds, kindOf(0, "AirPods Pro"))
     assertEquals(DeviceKind.Other, kindOf(null, "Thing"))
     assertEquals(DeviceKind.Pen, kindOf(null, "Apple Pencil"))
     assertEquals(DeviceKind.Pen, kindOf(null, "Galaxy S Pen Pro"))
     assertEquals(DeviceKind.Other, kindOf(null, "Open Run")) // "pen" inside a word isn't a pen
     assertEquals(DeviceKind.Keyboard, kindOf(0x0540, "Mouse-named keyboard"))
+  }
+
+  @Test fun earbudsByName() {
+    assertEquals(DeviceKind.Earbuds, kindOf(0x0404, "Ian's AirPods Pro")) // headset class, earbuds name
+    assertEquals(DeviceKind.Earbuds, kindOf(0x0418, "Galaxy Buds3 Pro"))
+    assertEquals(DeviceKind.Earbuds, kindOf(0x0404, "WF-1000XM5"))
+    assertEquals(DeviceKind.Headphones, kindOf(0x0418, "AirPods Max"))
+    assertEquals(DeviceKind.Headset, kindOf(0x0404, "Jabra Talk"))
+    assertEquals(DeviceKind.Keyboard, kindOf(0x0540, "Buds keyboard")) // name only counts for audio devices
   }
 
   @Test fun notificationLines() {

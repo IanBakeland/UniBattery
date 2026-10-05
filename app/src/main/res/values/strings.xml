@@ -27,6 +27,7 @@
   <string name="icon_title">Icon</string>
   <string name="icon_auto">Automatic</string>
   <string name="kind_headphones">Headphones</string>
+  <string name="kind_earbuds">Earbuds</string>
   <string name="kind_headset">Headset</string>
   <string name="kind_speaker">Speaker</string>
   <string name="kind_keyboard">Keyboard</string>

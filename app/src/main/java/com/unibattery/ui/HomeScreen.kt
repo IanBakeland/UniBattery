@@ -902,6 +902,8 @@ private fun IconSheet(device: BtDevice, onDismiss: () -> Unit) {
         DeviceKind.entries.forEach { kind ->
           KindOption(kind, selected = (pinned ?: device.kind) == kind, Modifier.weight(1f)) { pick(kind) }
         }
+        // Fill the last row so its options keep the same width as the rows above.
+        repeat((4 - DeviceKind.entries.size % 4) % 4) { Spacer(Modifier.weight(1f)) }
       }
     }
   }

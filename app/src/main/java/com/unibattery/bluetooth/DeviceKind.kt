@@ -6,6 +6,7 @@ import com.unibattery.R
 
 enum class DeviceKind(@DrawableRes val icon: Int, @StringRes val label: Int) {
   Headphones(R.drawable.ic_headphones, R.string.kind_headphones),
+  Earbuds(R.drawable.ic_earbuds, R.string.kind_earbuds),
   Headset(R.drawable.ic_headset, R.string.kind_headset),
   Speaker(R.drawable.ic_speaker, R.string.kind_speaker),
   Keyboard(R.drawable.ic_keyboard, R.string.kind_keyboard),
@@ -27,7 +28,8 @@ fun kindOf(deviceClass: Int?, name: String): DeviceKind {
   val cls = deviceClass ?: 0
   val minor = cls and 0xFF
   val fromClass = when (cls and 0x1F00) {
-    0x0400 -> when (cls and 0x1FFC) { // audio/video
+    // Earbuds report the same audio classes as headsets and headphones, so only their name tells them apart.
+    0x0400 -> if (looksLikeEarbuds(name)) DeviceKind.Earbuds else when (cls and 0x1FFC) { // audio/video
       0x0404, 0x0408 -> DeviceKind.Headset // wearable headset, hands-free
       0x0418 -> DeviceKind.Headphones
       0x0414, 0x041C, 0x0428 -> DeviceKind.Speaker // loudspeaker, portable audio, hifi
@@ -51,7 +53,8 @@ fun kindOf(deviceClass: Int?, name: String): DeviceKind {
   if (fromClass != null) return fromClass
   val n = name.lowercase()
   return when {
-    listOf("buds", "pods", "headphone", "earbud", "wh-", "wf-").any { it in n } -> DeviceKind.Headphones
+    looksLikeEarbuds(name) -> DeviceKind.Earbuds
+    listOf("pods", "headphone", "wh-").any { it in n } -> DeviceKind.Headphones
     listOf("mouse", "mx master", "mx anywhere", "trackpad").any { it in n } -> DeviceKind.Mouse
     listOf("keyboard", "keys").any { it in n } -> DeviceKind.Keyboard
     listOf("pencil", "stylus", "s pen", " pen").any { it in " $n" } -> DeviceKind.Pen
@@ -60,4 +63,10 @@ fun kindOf(deviceClass: Int?, name: String): DeviceKind {
     listOf("speaker", "soundbar").any { it in n } -> DeviceKind.Speaker
     else -> DeviceKind.Other
   }
+}
+
+/** AirPods, Galaxy/Pixel Buds, Sony WF-...; not AirPods Max, which are over-ear. */
+private fun looksLikeEarbuds(name: String): Boolean {
+  val n = name.lowercase()
+  return listOf("buds", "airpods", "earbud", "wf-").any { it in n } && "max" !in n
 }
