@@ -5,25 +5,23 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class AirPodsTest {
-  // Apple manufacturer data: type, length, prefix, model (2), status, buds, case/flags, ...
-  private fun message(model: Int, buds: Int) =
-    byteArrayOf(0x07, 0x19, 0x01, (model shr 8).toByte(), model.toByte(), 0x2B, buds.toByte(), 0x05, 0x00)
+  private fun hex(s: String) = s.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
-  @Test fun lowestBud() {
-    assertEquals(70, airPodsLevel(message(0x1420, 0x97))) // AirPods Pro 2: 90% and 70%
-    assertEquals(80, airPodsLevel(message(0x2420, 0x8F))) // one bud unknown
-    assertEquals(100, airPodsLevel(message(0x1420, 0xBB))) // >10 means full
-    assertNull(airPodsLevel(message(0x1420, 0xFF)))
+  @Test fun batteryNotification() {
+    // From the protocol docs: left 100% charging, right 100% charging, case 12%.
+    assertEquals(100, aapBatteryLevel(hex("040004000400030401640101020164010108010c0201")))
+    // Left 45%, right 80%, case 30%: lowest earbud, never the case.
+    assertEquals(45, aapBatteryLevel(hex("040004000400030401" + "2d0201" + "020150" + "0201" + "08011e0201")))
+    // Right bud out of range (status 4) is ignored.
+    assertEquals(70, aapBatteryLevel(hex("04000400040002040146020102010a0401")))
+    // Single headset (AirPods Max).
+    assertEquals(55, aapBatteryLevel(hex("0400040004000101013702 01".replace(" ", ""))))
   }
 
-  @Test fun singleBatteryUsesLowNibble() {
-    assertEquals(60, airPodsLevel(message(0x0A20, 0x06))) // AirPods Max; high nibble isn't a bud
-  }
-
-  @Test fun rejectsOtherMessages() {
-    assertNull(airPodsLevel(null))
-    assertNull(airPodsLevel(byteArrayOf(0x10, 0x05, 0x01, 0x14, 0x20, 0x2B, 0x55))) // nearby-info, not pairing
-    assertNull(airPodsLevel(byteArrayOf(0x07, 0x19, 0x07, 0x14, 0x20, 0x2B, 0x55))) // non-status 0x07 frame
-    assertNull(airPodsLevel(byteArrayOf(0x07, 0x19, 0x01)))
+  @Test fun otherPackets() {
+    assertNull(aapBatteryLevel(hex("010004000000010002000500494e0500a54f"))) // connect response
+    assertNull(aapBatteryLevel(hex("040004000600020101"))) // in-ear state
+    assertNull(aapBatteryLevel(hex("0400040004000108010c0201"))) // only the case
+    assertNull(aapBatteryLevel(hex("0400")))
   }
 }

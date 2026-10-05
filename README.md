@@ -26,8 +26,8 @@ Headphones, mouse, keyboard, controller, watch: every one of them seems to want 
 - 🕘 **Last known battery**: when a device isn't connected, the app and the widgets show the level it had last time, so you know whether to charge it before you connect
 - 🎨 **Customisable widgets**: background opacity (all the way to 0%), corner roundness, text size, wallpaper or fixed colours, and whether to show last known levels
 - 🔔 **Optional notification**: a silent, persistent notification that keeps the levels current
-- 🎧 **AirPods and Beats** (Android 12+): battery read from their Bluetooth broadcasts, in 10% steps
-- 🔒 **Minimal permissions**: no location, only the "Nearby devices" permission for devices you have already paired
+- 🎧 **AirPods and Beats** (Android 17+): exact battery levels through Apple's own protocol
+- 🔒 **Minimal permissions**: no location, no scanning, only access to devices you have already paired
 
 ## 📋 Requirements
 
@@ -56,7 +56,7 @@ The app only shows a percentage when one of these sources actually reports one. 
 1. Android's own per-device level (`BluetoothDevice.getBatteryLevel()`, hidden in the SDK but reachable). It covers HFP/AVRCP headsets, Apple accessory reports and, on Android 14+, the LE Battery Service.
 2. The system `BATTERY_LEVEL_CHANGED` broadcast.
 3. A direct GATT read of the standard Battery Service (`0x180F`) on connected LE devices, for example mice and keyboards on older Android versions.
-4. AirPods and Beats (Android 12+): a short Bluetooth scan for the status message they broadcast, which has the earbuds' battery in 10% steps. The lowest earbud is shown. If several pairs are nearby, the closest one is used.
+4. AirPods and Beats: Apple's own accessory protocol (AAP, an L2CAP channel on PSM `0x1001`), kept open while they're connected so they push exact levels. Written from [tyalie/AAP-Protocol-Definition](https://github.com/tyalie/AAP-Protocol-Defintion). Android only allows this channel without root on versions newer than 16 QPR3, and apps can only open it through a hidden constructor, so UniBattery uses [HiddenApiBypass](https://github.com/LSPosed/AndroidHiddenApiBypass) for that one class (as LibrePods does).
 
 Devices that only report battery through their own proprietary protocol (some earbuds with a companion app) won't show up with a level.
 
@@ -64,8 +64,7 @@ Devices that only report battery through their own proprietary protocol (some ea
 
 | Permission | Why |
 |---|---|
-| `BLUETOOTH_CONNECT` (Android 12+) / `BLUETOOTH` (11 and lower) | Read paired devices and their battery level. No location. |
-| `BLUETOOTH_SCAN` (Android 12+) | Only to read AirPods and Beats battery from their broadcasts, while they're connected. Part of the same "Nearby devices" permission, so there's no extra prompt. Declared as never used for location. |
+| `BLUETOOTH_CONNECT` (Android 12+) / `BLUETOOTH` (11 and lower) | Read paired devices and their battery level. No scan, no location. |
 | `POST_NOTIFICATIONS` | Only requested when you turn on the battery notification. |
 | `FOREGROUND_SERVICE_CONNECTED_DEVICE` | The notification is a silent foreground service, so it stays current in the background. |
 | `RECEIVE_BOOT_COMPLETED` | Restarts the notification after a reboot if you had it on. |

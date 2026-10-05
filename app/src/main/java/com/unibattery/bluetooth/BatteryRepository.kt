@@ -9,17 +9,12 @@ import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
-import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
-import android.bluetooth.le.ScanResult
-import android.bluetooth.le.ScanSettings
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.ParcelUuid
 import androidx.core.content.ContextCompat
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -80,7 +75,7 @@ data class BatteryState(
  *    read through the hidden-but-allowlisted BluetoothDevice.getBatteryLevel().
  * 2. The last value from the system BATTERY_LEVEL_CHANGED broadcast.
  * 3. A direct GATT read of the standard Battery Service (0x180F) for connected LE devices.
- * 4. AirPods and Beats: their Bluetooth advertisements (Android 12+, needs the scan permission). In 10% steps.
+ * 4. AirPods and Beats: Apple's own accessory protocol, see [AirPodsBattery].
  */
 class BatteryRepository(private val context: Context, private val scope: CoroutineScope) {
 
@@ -91,8 +86,7 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
   private val gattLevels = ConcurrentHashMap<String, Int>()
   private val noBatteryService = ConcurrentHashMap.newKeySet<String>()
   private val aclConnected = ConcurrentHashMap.newKeySet<String>()
-  @Volatile private var airPodsBattery: Int? = null
-  @Volatile private var lastAirPodsScan = 0L
+  private val airPods = AirPodsBattery(scope) { refresh(manual = false) }
   private val mutex = Mutex()
 
   private val _state = MutableStateFlow(BatteryState(status()))
@@ -113,7 +107,7 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
         BluetoothDevice.ACTION_ACL_DISCONNECTED -> device?.let { forget(it.address) }
         BluetoothAdapter.ACTION_STATE_CHANGED -> if (adapter?.isEnabled != true) {
           broadcastLevels.clear(); gattLevels.clear(); noBatteryService.clear(); aclConnected.clear()
-          airPodsBattery = null
+          airPods.reset()
         }
       }
       refresh(manual = false)
@@ -160,11 +154,6 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
   /** Same handling as the runtime receiver, for broadcasts delivered to [com.unibattery.widget.BluetoothEventReceiver]. */
   fun onBroadcast(intent: Intent) = receiver.onReceive(context, intent)
 
-  /** Scanning for AirPods advertisements. Android 12+ only: before that, scanning needs location access. */
-  fun canScan(): Boolean =
-    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-      ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
-
   fun hasPermission(): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
       ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==
@@ -176,9 +165,10 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
       if (manual) {
         _state.update { it.copy(refreshing = true) }
         noBatteryService.clear()
+        airPods.retryFailed()
       }
       val start = System.currentTimeMillis()
-      val next = load(manual)
+      val next = load()
       // Keep the expressive loading indicator on screen long enough to read as feedback.
       if (manual) delay((600 - (System.currentTimeMillis() - start)).coerceAtLeast(0))
       _state.value = next
@@ -193,20 +183,13 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
   }
 
   @SuppressLint("MissingPermission") // status() == On implies permission
-  private suspend fun load(manual: Boolean): BatteryState {
+  private suspend fun load(): BatteryState {
     val status = status()
     if (status != BtStatus.On) return BatteryState(status)
     val bonded = try {
       adapter!!.bondedDevices.orEmpty()
     } catch (_: SecurityException) {
       return BatteryState(BtStatus.NoPermission)
-    }
-    // Refresh runs on every Bluetooth event, so only scan again after a minute (Android also throttles scans).
-    val airPods = bonded.filter { isAirPods(it) && isConnected(it) && systemLevel(it) == null }
-    if (airPods.isEmpty()) { airPodsBattery = null; lastAirPodsScan = 0 } // scan right away on reconnect
-    else if (canScan() && (manual || System.currentTimeMillis() - lastAirPodsScan > 60_000)) {
-      lastAirPodsScan = System.currentTimeMillis()
-      scanAirPods()?.let { airPodsBattery = it }
     }
     val devices = coroutineScope {
       bonded.map { d -> async { toDevice(d) } }.awaitAll()
@@ -220,7 +203,10 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
     val name = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) d.alias else null)
       ?: d.name ?: d.address
     var battery = if (connected) systemLevel(d) ?: broadcastLevels[d.address] else null
-    if (connected && battery == null && isAirPods(d)) battery = airPodsBattery
+    if (connected && battery == null && d.isAirPods()) {
+      airPods.connect(adapter!!, d)
+      battery = airPods.level(d.address)
+    }
     if (connected && battery == null && d.type != BluetoothDevice.DEVICE_TYPE_CLASSIC &&
       d.address !in noBatteryService
     ) {
@@ -241,35 +227,6 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
     runCatching { isConnectedMethod?.invoke(d) as Boolean? }.getOrNull()
       ?: (d.address in aclConnected)
 
-  @SuppressLint("MissingPermission")
-  private fun isAirPods(d: BluetoothDevice): Boolean = d.uuids?.contains(AIRPODS_SERVICE) == true
-
-  /**
-   * Listens for AirPods advertisements for a few seconds and takes the strongest, i.e. closest, one.
-   * ponytail: closest wins, so someone else's AirPods right next to you could be read instead; matching
-   * the exact pair needs keys only an Apple-protocol (AACP) connection can fetch.
-   */
-  @SuppressLint("MissingPermission") // canScan() checked by the caller
-  private suspend fun scanAirPods(): Int? {
-    val scanner = adapter?.bluetoothLeScanner ?: return null
-    var best: ScanResult? = null
-    val callback = object : ScanCallback() {
-      override fun onScanResult(callbackType: Int, result: ScanResult) {
-        val data = result.scanRecord?.getManufacturerSpecificData(APPLE_COMPANY_ID)
-        if (airPodsLevel(data) != null && result.rssi > (best?.rssi ?: Int.MIN_VALUE)) best = result
-      }
-    }
-    // Filtered on Apple's proximity-pairing message, which also keeps the scan running with the screen off.
-    val filter = ScanFilter.Builder()
-      .setManufacturerData(APPLE_COMPANY_ID, byteArrayOf(0x07, 0, 0x01), byteArrayOf(-1, 0, -1))
-      .build()
-    val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
-    runCatching { scanner.startScan(listOf(filter), settings, callback) }.onFailure { return null }
-    delay(3.seconds)
-    runCatching { scanner.stopScan(callback) }
-    return airPodsLevel(best?.scanRecord?.getManufacturerSpecificData(APPLE_COMPANY_ID))
-  }
-
   private fun systemLevel(d: BluetoothDevice): Int? =
     runCatching { getBatteryLevelMethod?.invoke(d) as Int? }.getOrNull()?.takeIf { it in 0..100 }
 
@@ -278,6 +235,7 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
     broadcastLevels -= address
     gattLevels -= address
     noBatteryService -= address
+    airPods.reset(address)
   }
 
   @SuppressLint("MissingPermission")
@@ -331,7 +289,5 @@ class BatteryRepository(private val context: Context, private val scope: Corouti
     val getBatteryLevelMethod = runCatching { BluetoothDevice::class.java.getMethod("getBatteryLevel") }.getOrNull()
     val BATTERY_SERVICE: UUID = UUID.fromString("0000180f-0000-1000-8000-00805f9b34fb")
     val BATTERY_LEVEL: UUID = UUID.fromString("00002a19-0000-1000-8000-00805f9b34fb")
-    // Apple's accessory protocol service. Paired AirPods and Beats list it, so it's how we recognise them.
-    val AIRPODS_SERVICE: ParcelUuid = ParcelUuid.fromString("74ec2172-0bad-4d01-8f77-997b2be0722a")
   }
 }
